@@ -232,30 +232,11 @@ test "precomputeInverse is correct" {
 
 test "utils functions" {
     const pd = params.Params.kem768.get();
-
     // ... your existing utils tests
-
     // Test compress/decompress
     const x: u16 = 1234;
     const compressed_x = compress(pd, x, pd.du);
     const decompressed_x = decompress(pd, compressed_x, pd.du);
-
-
-    try expectEqual(x, decompressed_x);
-
+	expectEqual(x, decompressed_x);
     // ... add tests for other utility functions
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

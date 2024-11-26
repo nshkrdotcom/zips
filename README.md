@@ -79,7 +79,7 @@ pub fn main() !void {
 ## Dependency Graph
 
 ```mermaid
-graph LR
+graph TD
     kem --> mlkem
     mlkem --> kpke
     kpke --> ntt
@@ -89,8 +89,7 @@ graph LR
     cbd --> rng
     mlkem --> rng
     example --> kem
-    subgraph "std.crypto"
-        direction LR
+    subgraph SC["std.crypto"]
         aead
         hash
         random
@@ -104,6 +103,27 @@ graph LR
     mlkem --> error
     kpke --> error
     cbd --> error
+    subgraph Tests["Tests"]
+        ntt_test
+        cbd_test
+        utils_test
+        test_vectors --> mlkem_test
+        test_vectors --> kpke_test
+    end
+    ntt_test --> ntt
+    ntt_test --> params
+    cbd_test --> cbd
+    cbd_test --> params
+    utils_test --> params
+    utils_test --> utils
+    mlkem_test --> mlkem
+    mlkem_test --> kem
+    mlkem_test --> params
+    kpke_test --> kpke
+    kpke_test --> params
+    Tests --> std.testing
+    Tests --> SC
+    Tests --> error
 ```
 
 ## Building

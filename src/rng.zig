@@ -1,3 +1,4 @@
+//rng.zig
 const std = @import("std");
 const crypto = std.crypto;
 const Error = @import("error.zig").Error;

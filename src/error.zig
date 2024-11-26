@@ -1,3 +1,4 @@
+//error.zig
 const std = @import("std");
 
 pub const Error = error{

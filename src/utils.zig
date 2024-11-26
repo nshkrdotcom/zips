@@ -1,3 +1,4 @@
+//utils.zig
 const std = @import("std");
 const params = @import("params.zig");
 const rng = @import("rng.zig");

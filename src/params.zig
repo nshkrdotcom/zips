@@ -1,3 +1,4 @@
+//params.zig
 const std = @import("std");
 
 pub const Params = enum {

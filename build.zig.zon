@@ -1,4 +1,4 @@
-// build.zig.zon
+//build.zig.zon
 .{
     .name = "zips",
     .version = "0.0.1",

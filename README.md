@@ -26,45 +26,50 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // 1. Select parameter set (ML-KEM-768 is recommended)
-    const param_set = params.kem768;
+    // 1. Select parameter set
+    const param_set = params.kem768;  // Or kem512/kem1024
 
     // 2. Generate key pair
     const keypair = try kem.keygen(param_set, allocator);
     defer {
-        kem.destroyPrivateKey(&keypair.privateKey); // Pass pointer to destroy function
-        kem.destroyPublicKey(&keypair.publicKey);  // Pass pointer to destroy function
+        kem.destroyPrivateKey(&keypair.privateKey);
+        kem.destroyPublicKey(&keypair.publicKey);
     }
     const pk = keypair.publicKey;
     const sk = keypair.privateKey;
 
     // 3. Encapsulate
-    const encapsulation = try kem.encaps(pk, param_set, allocator);
+     const encapsulation = try kem.encaps(param_set, pk, allocator);
     defer kem.destroyCiphertext(&encapsulation.ciphertext);
     const ct = encapsulation.ciphertext;
     const shared_secret = encapsulation.shared_secret;
 
     // 4. Decapsulate
-    const recovered_shared_secret = try kem.decaps(sk, ct, param_set);
+    const recovered_shared_secret = try kem.decaps(param_set, sk, ct, allocator);
 
-    // 5. Encrypt a message (using AES-GCM from std.crypto.aead)
+    if (!std.mem.eql(u8, shared_secret, recovered_shared_secret)) {
+        std.debug.print("Error: Shared secrets do not match!\n", .{});
+        return;
+    }
+
+    // 5. Encrypt a message using the shared secret (AES-GCM)
     const plaintext = "Lorem ipsum dolor sit amet.";
+    var nonce: [12]u8 = undefined; // 96-bit nonce for AES-256-GCM
+    try kem.generateRandomBytes(&nonce);
 
-    // Generate a 96-bit nonce (12 bytes) for AES-GCM
-    var nonce: [12]u8 = undefined;
-    try kem.generateRandomBytes(&nonce); // Use your kem interface for random bytes
-
-    const additional_data = ""; // Or any additional authenticated data
-    const ciphertext = try kem.encrypt(shared_secret, nonce, plaintext, additional_data, allocator);
+    const additional_data = ""; // Optional additional authenticated data
+    const ciphertext = try kem.aeadEncrypt(shared_secret, nonce, plaintext, additional_data, allocator);
     defer allocator.free(ciphertext);
 
-    // 6. Decrypt the message
-    const decrypted = try kem.decrypt(recovered_shared_secret, nonce, ciphertext, additional_data, allocator); // Add allocator
-    defer allocator.free(decrypted); // Free decrypted plaintext
-    std.debug.print("Decrypted: {s}\n", .{decrypted});
+    std.debug.print("Ciphertext (hex): {s}\n", .{std.fmt.fmtSliceHexLower(ciphertext)});
 
-    // 7. Verification
-    if (!std.mem.eql(u8, &shared_secret, &recovered_shared_secret)) { // Compare by reference
+    // 6. Decrypt the message
+    const decrypted = try kem.aeadDecrypt(recovered_shared_secret, nonce, ciphertext, additional_data, allocator);
+    defer allocator.free(decrypted);
+    std.debug.print("Decrypted: {s}\n", .{decrypted});
+	
+	// 7. Verification (compare slices, not pointers)
+    if (!std.mem.eql(u8, shared_secret, recovered_shared_secret)) {
         std.debug.print("Error: Shared secrets do not match!\n", .{});
         return error.DecryptionFailure;
     }

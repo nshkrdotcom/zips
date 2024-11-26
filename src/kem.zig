@@ -114,8 +114,6 @@ test "ML-KEM KAT - KEM-768" {
     var pk = try decodePublicKey(pd, kat.pk); // Implement decodePublicKey in utils if using byte encoding for keys
     var sk = try decodePrivateKey(pd, kat.sk);
     var ct = try decodeCiphertext(pd, kat.ct);
-
-
     const ss = try mlkem.decaps(pd, sk, ct, allocator);
     try testing.expectEqualSlices(u8, kat.ss, &ss);
 
@@ -139,6 +137,27 @@ test "ML-KEM KAT - KEM-768" {
 //Other modules: Review and update the tests in other modules (ntt, cbd, utils) as needed to ensure everything works correctly.
 
 //Benchmarking: Create benchmarks to measure the performance of your ML-KEM implementation. This will help you identify potential areas for optimization. Zig's std.time module can be used for benchmarking.
+
+test "benchmark mlkem keygen" {
+    const pd = params.Params.kem768.get();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    var timer = try std.time.Timer.start();
+
+    var i: usize = 0;
+    while (i < 1000) : (i += 1) { // Benchmark over 1000 iterations
+         const keypair = try kem.keygen(param_set, allocator);
+        kem.destroyPrivateKey(&keypair.privateKey);
+        kem.destroyPublicKey(&keypair.publicKey);
+
+
+    }
+
+    const elapsed = timer.read();
+    std.debug.print("Average keygen time: {}ns\n", .{elapsed / 1000});
+}
 
 //Benchmarking: Create benchmarks to measure the performance of keygen, encaps, and decaps for all parameter sets. This data is essential for evaluating the efficiency of your implementation and identifying potential bottlenecks.
 

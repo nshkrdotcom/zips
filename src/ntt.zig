@@ -70,15 +70,10 @@ test "ntt and nttInverse are inverses" {
     const pd = params.Params.kem768.get(); // Example parameters
     var f = RqTq(pd){};
     for (f, 0..) |*x, i| x.* = @intCast(u16, i % pd.q);
-
     var f_copy = f; // keep a copy to compare after nttInverse
-
     ntt(pd, &f);
     nttInverse(pd, &f);
-
-
     try expectEqual(f_copy, f);
-
 }
 
 test "ntt and nttInverse work with zero array" {
@@ -87,9 +82,6 @@ test "ntt and nttInverse work with zero array" {
     var f_hat = RqTq(pd){};
     ntt(pd, &f);
     nttInverse(pd, &f_hat);
-
-
     try std.testing.expectEqual(f, f_hat);
-
 }
 // Add more test cases for different inputs and parameter sets

@@ -184,6 +184,44 @@ pub fn precomputeInverse(comptime modulus: u32) u32 {
     return @mod(if (t < 0) t + modulus else t,modulus); // Ensure positive
 }
 
+// In utils.zig
+pub fn decodePublicKey(comptime pd: params.ParamDetails, hex_string: []const u8) !kem.PublicKey {
+    var pk_bytes = try std.fmt.hexToSlice(u8, hex_string);
+    // ... (Decode pk_bytes into the components of a PublicKey struct)
+    // ... (This will depend on how you've structured your PublicKey)
+    const t = pk_bytes[0..pk_bytes.len - 32];
+    const rho = pk_bytes[pk_bytes.len - 32..];
+    var arena = try std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var publicKey_t = try arena.allocator().alloc(u8, t.len);
+    errdefer arena.allocator().free(publicKey_t);
+    std.mem.copy(u8, publicKey_t, t);
+    return .{ .t = publicKey_t, .rho = rho, .arena = &arena };
+}
+
+pub fn decodePrivateKey(comptime pd: params.ParamDetails, hex_string: []const u8) !kem.PrivateKey {
+    _ = pd;
+    var sk_bytes = try std.fmt.hexToSlice(u8, hex_string);
+    var arena = try std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var s = try arena.allocator().alloc(u16, pd.n * pd.k);
+    errdefer arena.allocator().free(s);
+    for (0..pd.k) |i| {
+        for (0..pd.n) |j| {
+            s[i*pd.n + j] = std.mem.readIntLittle(u16, sk_bytes[(i * pd.n + j)*2..(i*pd.n + j + 1) * 2 ]);
+        }
+    }
+    return kem.PrivateKey{ .s = s, .arena = &arena };
+}
+
+pub fn decodeCiphertext(comptime pd: params.ParamDetails, hex_string: []const u8) !kem.Ciphertext {
+    _ = pd;
+    var ct_bytes = try std.fmt.hexToSlice(u8, hex_string);
+    var arena = try std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var ct = try arena.allocator().alloc(u8, ct_bytes.len);
+     errdefer arena.allocator().free(ct);
+    std.mem.copy(u8, ct, ct_bytes);
+    return ct;
+}
+
 const expectEqual = std.testing.expectEqual;
 const expectError = std.testing.expectError;
 

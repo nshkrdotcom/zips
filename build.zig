@@ -1,77 +1,65 @@
 const std = @import("std");
-const Builder = std.build.Builder;
 
-pub fn build(b: *Builder) void {
+const test_targets = [_]std.Target.Query{
+    .{}, // native
+    // .{
+    //     .cpu_arch = .x86_64,
+    //     .os_tag = .linux,
+    // },
+    // .{
+    //     .cpu_arch = .aarch64,
+    //     .os_tag = .macos,
+    // },
+};
+
+pub fn build(b: *std.Build) void {
+    // Standard target and optimization options
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+	
+    const zips = b.addStaticLibrary(.{
+        .name = "zips",
+        .root_source_file = b.path("src/kem.zig"),
+        .target = target,
+		.optimize = optimize,
+    });
+    //zips.linkLibC();
 
-    // Executable - Example Usage
-    const example = b.addExecutable("mlkem_example", "example.zig");
-    example.setTarget(target);
-    example.setOptimize(optimize);
-    example.addPackagePath("kem", .{ .path = "src/kem.zig" });
-    example.linkLibC(); // Link libc if needed
-
-    // Library - ML-KEM
-    const libkem = b.addStaticLibrary("kem", "src/kem.zig");
-    libkem.setTarget(target);
-    libkem.setOptimize(optimize);
-
-    // Add source files to the library (order matters for dependencies)
-    libkem.addSourceFile("src/mlkem.zig");
-    libkem.addSourceFile("src/kpke.zig");
-    libkem.addSourceFile("src/ntt.zig");
-    libkem.addSourceFile("src/cbd.zig");
-    libkem.addSourceFile("src/utils.zig"); // Might be smaller now
-    libkem.addSourceFile("src/params.zig");
-    libkem.addSourceFile("src/rng.zig"); // Minimal for error handling
-    libkem.addSourceFile("src/error.zig");
-
-
-    // Link the library to the example
-    example.addDependency(libkem);
-
-    // Tests
-    const test_step = b.step("test", "Run unit tests");
-    const test_files = [_][]const u8{
-        "test/mlkem_test.zig",
-        "test/kpke_test.zig",
-        "test/ntt_test.zig",
-        "test/cbd_test.zig",
-        "test/utils_test.zig", // If still applicable
-        // ... other tests ...
-    };
-
-    for (test_files) |test_file| {
-        const test = b.addTest(test_file);
-        test.setTarget(target);
-        test.setOptimize(optimize);
-        test.addPackagePath("kem", .{ .path = "src/kem.zig" });
-        test_step.addTest(test);
+    if (b.option(bool, "enable-demo", "install the demo too") orelse false) {
+	    const zipsexample = b.addExecutable(.{
+			.name = "zipsexample",
+			.root_source_file = b.path("example.zig"),
+			.target = target,
+			.optimize = optimize,
+		});
+		zipsexample.linkLibrary(zips);
+		b.installArtifact(zipsexample);
     }
 
-     // Install Header (Optional)
-    // const install_header_step = b.step("install_header", "Install the header file to the zig std path so other packages can easily depend on it.");
-    // const zig_lib_path = std.zig.getZigLibDir();
-    // // Create the std/kem directory and parent std directory if they don't exist.
-    // // See https://github.com/ziglang/zig/issues/14895.
-    // try std.fs.cwd().makePath(zig_lib_path ++ "/std");
-    // try std.fs.cwd().makePath(zig_lib_path ++ "/std/kem");
-
-    // const install_header = b.addInstallArtifact(
-    //     "kem_h",
-    //     .{ .path = "src/kem.zig", .mode = .0644 },
-    // );
-    // install_header.setDestinationPath(zig_lib_path ++ "/std/kem/kem.zig");
-    // install_header_step.dependOn(&install_header.step);
-
-
+	if (b.release_mode == .off) {
+        if (b.option(bool, "test-deps", "Fetch test dependencies") orelse false) {
+		    const test_step = b.step("test", "Run unit tests");
+			for (test_targets) |test_target| {
+				const unit_tests = b.addTest(.{
+					.root_source_file = b.path("kem.zig"),
+					.target = b.resolveTargetQuery(test_target),
+				});
+				const run_unit_tests = b.addRunArtifact(unit_tests);
+				run_unit_tests.skip_foreign_checks = true;
+				test_step.dependOn(&run_unit_tests.step);
+			}
+        } else {
+			std.debug.print("Not fetching or running tests because '-Dtest-deps' was not provided.\n", .{});
+		}
+	} else {
+		std.debug.print("Building in Release Mode.\n", .{});
+	}
 
     // Generate documentation
-    const doc_step = b.step("doc", "Generate documentation for kem library");
-    const kem_doc = b.addDocTest("src/kem.zig");
-    kem_doc.setTarget(target);
-    doc_step.dependOn(&kem_doc.step);
-
-
+    //const doc_step = b.step("doc", "Generate documentation for kem library");
+    //const kem_doc = b.addDocTest("src/kem.zig");
+    //kem_doc.setTarget(target);
+    //doc_step.dependOn(&kem_doc.step);
+	
+	std.debug.print("Build complete.\n", .{});
 }

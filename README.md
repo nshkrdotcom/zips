@@ -84,11 +84,6 @@ graph LR
     cbd --> rng
     mlkem --> rng
     example --> kem
-    mlkem_test --> kem
-    kpke_test --> kpke
-    ntt_test --> ntt
-    cbd_test --> cbd
-    utils_test --> utils
     subgraph "std.crypto"
         direction LR
         aead
@@ -100,7 +95,6 @@ graph LR
     kpke --> hash
     cbd --> random
     rng --> random
-
     kem --> error
     mlkem --> error
     kpke --> error
@@ -109,15 +103,43 @@ graph LR
 
 ## Building
 
-`zig build`
+This library uses Zig's built-in build system.  To build the example application:
+
+1.  Make sure you have a recent version of Zig installed (at least version 0.13.0).
+2.  Clone this repository:
+    ```bash
+    git clone https://github.com/nshkrdotcom/zips
+    ```
+3.  Navigate to the project directory:
+    ```bash
+    cd zips
+    ```
+4.  Build the example:
+    ```bash
+    zig build
+    ```
+    This will create the `zips_example` executable in the `zig-out/bin` directory.
+
 
 ## Testing
 
-`zig build test`
+This project uses `zigtest` for unit testing.  Tests are not built by default to prevent an extra dependency requirement. To build and run the tests, fetch `zigtest` at compile time by using the `-Dtest-deps` flag:
+
+1.  Follow the building instructions above.
+2. Build and run the tests:
+    ```bash
+    zig build -Dtest-deps test
+    ```
+    Or to just build without running:
+    ```bash
+    zig build -Dtest-deps
+    ```
+    After successfully building with this flag at least once, update the  `build.zig.zon` file with the new `zigtest` hash and then you can omit `-Dtest-deps=true`.
+
 
 ## Dependencies
 
-None. This implementation relies solely on the Zig standard library.
+* **Runtime:** None. Zips relies solely on the Zig standard library.
 
 ## License
 

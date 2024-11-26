@@ -36,7 +36,7 @@ def parse_kat_file(filepath, num_vectors=None):
                         vector = {}
     return vectors
 
-def generate_zig_file(vectors, filepath, compress=False, security_level="512"):
+def generate_zig_file(vectors, filename, compress=False, security_level="512"):
     """Generates a Zig file containing the test vectors."""
 
     zig_code = f"""pub const kat_vectors_{security_level} = [_]struct {{
@@ -56,14 +56,10 @@ def generate_zig_file(vectors, filepath, compress=False, security_level="512"):
 """
     zig_code += "};\n"
     data_to_write = zig_code.encode('utf-8')
-    if compress:
-        compressed_data = zlib.compress(data_to_write, level=9)
-        with open(filepath + ".zlib", "wb") as f:
-            f.write(compressed_data)
-        zig_code = f"""pub const kat_vectors_{security_level}_compressed = @embedFile("{os.path.basename(filepath)}.zlib");
-        """
-        data_to_write = zig_code.encode('utf-8')
-    with open(filepath, "wb") as f:
+    directory = "vector"
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    with open(directory + '/' + filename, "wb") as f:
         f.write(data_to_write)
 
 def main():
@@ -75,9 +71,9 @@ def main():
         # Small set of vectors
         print(f"Parsing input file: " + kat_filepath + ", " + str(num_vectors_per_set) + " vectors per set")
         small_vectors = parse_kat_file(kat_filepath, num_vectors_per_set)
-        small_output_filepath = f"kat_vectors_{security_level}_small.zig"
-        print(f"Generating small output zig file: " + small_output_filepath)
-        generate_zig_file(small_vectors, small_output_filepath, compress=False, security_level=security_level)
+        small_output_filename = f"kat_vectors_{security_level}_small.zig"
+        print(f"Generating small output zig file: " + small_output_filename)
+        generate_zig_file(small_vectors, small_output_filename, compress=False, security_level=security_level)
         
         # All vectors (for compressed archive) + failure vectors
         ## print(f"Parsing full output file: " + kat_filepath + " (all vectors)")

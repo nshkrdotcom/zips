@@ -1,0 +1,21 @@
+.{
+    .name = "mlkem",
+    .version = "0.1.0",
+    .minimum_zig_version = "0.13.0",
+    .dependencies = if (builtin.mode == .Debug or builtin.mode == .ReleaseSafe) .{
+                .zigtest = .{
+                    .path = "test-deps/zigtest",
+                    .lazy = true,
+                },
+            } else .{},
+
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "example.zig",
+        "test",
+        "README.md",
+        "LICENSE",
+    },
+}

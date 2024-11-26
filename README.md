@@ -184,29 +184,53 @@ Zips shows promise but needs significant work before being considered production
 
 2. **Constant-Time Ciphertext Comparison:** The `decaps` function in `mlkem.zig` compares ciphertexts (`c` and `c'`).  This *must* be done in constant time to prevent timing attacks.  The code acknowledges this but doesn't provide a constant-time implementation.  This is a high-priority security vulnerability that must be addressed.  Consider using `std.mem.compare` with masking or a dedicated constant-time comparison function.
 
-3. **Secure Error Handling:**  While `error.zig` defines an error set, consistent and secure error handling needs review. Ensure error messages don't leak sensitive information and that error paths don't introduce side channels.  Avoid early returns in sensitive functions if they lead to different execution times depending on secrets.
+FIPS 203 highlights the importance of constant-time operations (Section 3.3, Section 7.3).  The ciphertext comparison in `ML-KEM.Decaps_internal` (Algorithm 18, line 9) is a critical security vulnerability if not implemented in constant time. 
 
-4. **Memory Management and Sensitive Data:** Verify *all* allocated memory is freed, especially in error paths.  Crucially, ensure sensitive data (private keys, intermediate values in `decaps`, etc.) is securely zeroed out using `std.crypto.secureZero` *immediately* after use.
+3. **Strict Adherence to Algorithm Specifications:** FIPS 203 is prescriptive about the algorithms (Section 1, Section 7, etc.).  Ensure your implementation precisely matches the pseudocode in the standard, including data types, array indexing, modular arithmetic, and the specific order of operations.  While equivalent processes are allowed (Section 7), demonstrate clear mathematical equivalence if deviating from the pseudocode.  For example, the NTT implementation (Algorithms 9 and 10) should be carefully verified.
 
-5. **Review of Cryptographic Primitives:** While leveraging `std.crypto` is good, carefully review the usage of each primitive (SHAKE256, AES-GCM) to ensure compliance with FIPS 203 and best practices.  For example, is the nonce generation in `kem.zig` robust enough?
+4. **Secure Random Number Generation:**  The standard mandates approved RBGs with specific security strengths for each parameter set (Section 3.3, Table 2).  Ensure your use of `std.crypto.random` meets these requirements.  Document your RBG choice and its compliance.
+
+5. **Input Checking:**  FIPS 203 *requires* input checking for `ML-KEM.Encaps` and `ML-KEM.Decaps` (Section 7.2, Section 7.3).  Implement and thoroughly test the specified checks. The *encapsulation key check* (modulus check) and the *decapsulation input check* are mandatory for compliance.
+
+6. **Secure Destruction of Intermediate Values:**  The standard is very clear about destroying intermediate values (Section 3.3). Ensure sensitive data (seeds, private keys, intermediate values in `Decaps`, the implicit reject flag, etc.) is securely zeroed using `std.crypto.secureZero` *immediately* after use. This is not just a recommendation; it's a requirement for a secure implementation.
+
+7. **No Floating-Point Arithmetic:**  FIPS 203 *forbids* floating-point arithmetic (Section 3.3).  Review your code (especially in compression/decompression and NTT) to ensure no floating-point operations are used. Implement constant-time alternatives, including for the division by `q` during compression.
+
+8. **Secure Error Handling:**  While `error.zig` defines an error set, consistent and secure error handling needs review. Ensure error messages don't leak sensitive information and that error paths don't introduce side channels.  Avoid early returns in sensitive functions if they lead to different execution times depending on secrets.
+
+9. **Memory Management and Sensitive Data:** Verify *all* allocated memory is freed, especially in error paths.  Crucially, ensure sensitive data (private keys, intermediate values in `decaps`, etc.) is securely zeroed out using `std.crypto.secureZero` *immediately* after use.
+
+10. **Review of Cryptographic Primitives:** While leveraging `std.crypto` is good, carefully review the usage of each primitive (SHAKE256, AES-GCM) to ensure compliance with FIPS 203 and best practices.  For example, is the nonce generation in `kem.zig` robust enough?
+
 
 **Medium Priority - Functionality and Robustness:**
 
-6. **Parameter Handling:** While `params.zig` defines parameters, double-check all functions use the correct parameters for their operations.  A mix-up could lead to incorrect results or vulnerabilities.
+11. **Parameter Handling:** While `params.zig` defines parameters, double-check all functions use the correct parameters for their operations.  A mix-up could lead to incorrect results or vulnerabilities.
 
-7. **Edge Case Testing:** Test with invalid inputs (malformed ciphertexts, incorrect public key sizes, etc.) to ensure robust error handling and prevent crashes or undefined behavior.  Fuzz testing with a tool like libFuzzer is highly recommended.
+12. **Edge Case Testing:** Test with invalid inputs (malformed ciphertexts, incorrect public key sizes, etc.) to ensure robust error handling and prevent crashes or undefined behavior.  Fuzz testing with a tool like libFuzzer is highly recommended.
 
-8. **Code Clarity and Documentation:** The code needs better comments explaining complex logic, particularly in `ntt.zig` and `kpke.zig`. Public functions in `kem.zig` should have comprehensive docstrings.  Improve variable and function names for readability.  The README needs more complete build and usage instructions and an explanation of how to update the `zigtest` hash.
+13. **Code Clarity and Documentation:** The code needs better comments explaining complex logic, particularly in `ntt.zig` and `kpke.zig`. Public functions in `kem.zig` should have comprehensive docstrings.  Improve variable and function names for readability.  The README needs more complete build and usage instructions and an explanation of how to update the `zigtest` hash.
 
-9. **Benchmarking:**  Implement benchmarking for `keygen`, `encaps`, and `decaps` across all parameter sets. This is essential for performance evaluation and optimization.
+14. **Benchmarking:**  Implement benchmarking for `keygen`, `encaps`, and `decaps` across all parameter sets. This is essential for performance evaluation and optimization.
+
+15. **K-PKE Usage Restriction:**  FIPS 203 states that K-PKE *shall not* be used as a stand-alone scheme (Section 3.3).  Ensure your API design enforces this.  K-PKE functions should be internal and inaccessible to users of the library.
+
+16. **Controlled Access to Internal Functions:** The `_internal` functions (Section 6) should be exposed only for testing, not for general use.  Randomness generation must be handled within the KEM algorithms, not by the application.
+
+17. **Parameter Set Consistency:** Implement robust mechanisms to ensure consistent parameter set usage across all operations.  Mismatched parameters can lead to incorrect results or vulnerabilities.
+
+18. **Documentation and Specification Conformance:**  Clearly document that your implementation conforms to FIPS 203.  Provide clear instructions for parameter set selection and usage.  Mention any deviations from the pseudocode and their mathematical justification. Update your README with complete build, usage instructions, and testing information, including how to run the KATs.
+
 
 **Low Priority - Future Enhancements:**
 
-10. **KDF Consideration:** While not strictly required, consider including a Key Derivation Function (KDF) for deriving session keys from the shared secret.  `std.crypto.kdf` might suffice, but a dedicated KDF could offer more flexibility.
+19. **KDF Consideration:** While not strictly required, consider including a Key Derivation Function (KDF) for deriving session keys from the shared secret.  `std.crypto.kdf` might suffice, but a dedicated KDF could offer more flexibility.
 
-11. **Formal Verification:** If aiming for high assurance, explore formal verification methods to mathematically prove the correctness and security properties of the implementation.
+20. **Formal Verification:** If aiming for high assurance, explore formal verification methods to mathematically prove the correctness and security properties of the implementation.
 
-12. **Side-Channel Analysis:** Conduct side-channel analysis to assess vulnerabilities to timing attacks, power analysis, etc., and implement countermeasures.
+21. **Side-Channel Analysis:** Conduct side-channel analysis to assess vulnerabilities to timing attacks, power analysis, etc., and implement countermeasures.
+
+22. **Optional Key Derivation:**  Consider offering an optional KDF (per Section 3.3), but ensure it's implemented securely and doesn't weaken the overall security.  Address the standard's caution about combined KEM security.
 
 **Development Process:**
 

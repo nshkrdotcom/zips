@@ -79,8 +79,8 @@ pub fn main() !void {
 ## Dependency Graph
 
 ```mermaid
-graph TD
-    subgraph TV["Test&nbsp;Vectors"]
+graph LR
+    subgraph TV["Test Vectors"]
         kat_vectors_512
         kat_vectors_768
         kat_vectors_1024
@@ -113,15 +113,20 @@ graph TD
     end
     
     kem --> mlkem
+    kem --> params
     mlkem --> kpke
+    mlkem --> params
     kpke --> ntt
     kpke --> cbd
     kpke --> utils
     kpke --> params
+    kpke --> random
     cbd --> rng
+    cbd --> params
     mlkem --> rng
     kem --> aead
     kem --> random
+    kem --> params
     kpke --> hash
     cbd --> random
     rng --> random
@@ -129,19 +134,28 @@ graph TD
     mlkem --> error
     kpke --> error
     cbd --> error
+    utils --> params
+    ntt --> params
+    ntt --> utils
 
-    example --> kem
+
+    example["Interface"] --> kem
 
     ntt_test --> ntt
+    ntt_test --> utils
     ntt_test --> params
     cbd_test --> cbd
     cbd_test --> params
     utils_test --> params
     utils_test --> utils
+    utils_test --> mlkem
+    utils_test --> rng
     mlkem_test --> mlkem
     mlkem_test --> kem
+    mlkem_test --> utils
     mlkem_test --> params
     kpke_test --> kpke
+    kpke_test --> utils
     kpke_test --> params
     Tests --> std.testing
     Tests --> SC

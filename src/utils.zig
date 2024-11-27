@@ -129,7 +129,7 @@ fn constantTimeMod(x: u32, comptime modulus: u32) u32 {
 pub fn decodePublicKey(_: params.ParamDetails, pk_bytes: []const u8) !mlkem.PublicKey {
     const t = pk_bytes[0..pk_bytes.len - 32];
     const rho_src = pk_bytes[pk_bytes.len - 32..]; // Source rho
-    var arena = try std.heap.ArenaAllocator.init(std.heap.page_allocator);
+	var arena = try std.heap.ArenaAllocator.init(allocator);
     errdefer arena.deinit(); // Defer arena deallocation
     const publicKey_t = try arena.allocator().alloc(u8, t.len);
     errdefer arena.allocator().free(publicKey_t);
@@ -141,7 +141,7 @@ pub fn decodePublicKey(_: params.ParamDetails, pk_bytes: []const u8) !mlkem.Publ
 }
 
 pub fn decodePrivateKey(comptime pd: params.ParamDetails, sk_bytes: []const u8) !mlkem.PrivateKey {
-    var arena = try std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = try std.heap.ArenaAllocator.init(allocator);
     errdefer arena.deinit();
     var sk = try arena.allocator().create(mlkem.PrivateKey);
     sk.arena = &arena;
@@ -157,7 +157,7 @@ pub fn decodeCiphertext(comptime pd: params.ParamDetails, ct_bytes: []const u8) 
     if (ct_bytes.len != pd.ciphertextBytes) { // validate ciphertext length before creating the arena or allocating
         return error.InvalidCiphertext;
     }
-    var arena = try std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    var arena = try std.heap.ArenaAllocator.init(allocator);
     errdefer arena.deinit();
     const ct = try arena.allocator().alloc(u8, ct_bytes.len);
     errdefer arena.allocator().free(ct);

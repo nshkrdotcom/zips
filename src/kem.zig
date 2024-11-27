@@ -18,6 +18,7 @@ const EncapsResult = struct {
 
 // Parameter Sets
 pub const Params = paramsModule.Params;
+pub const ParamDetails = paramsModule.ParamDetails;
 
 pub fn getParams(param_set: Params) paramsModule.ParamDetails {
     return paramsModule.getParams(param_set);
@@ -30,18 +31,18 @@ pub const Ciphertext = []u8;  // Ciphertext is a byte slice
 pub const SharedSecret = [32]u8;
 
 // Key Generation
-pub fn keygen(comptime param_set: Params, allocator: *std.mem.Allocator) Error!KeyPair {
-    return try mlkem.keygen(param_set, allocator);
+pub fn keygen(comptime params: Params, allocator: *std.mem.Allocator) Error!KeyPair {
+    return try mlkem.keygen(params, allocator);  // params.get() 
 }
 
 // Encapsulation
-pub fn encaps(comptime param_set: Params, pk: PublicKey, allocator: *std.mem.Allocator) Error!EncapsResult {
-    return try mlkem.encaps(param_set, pk, allocator);
+pub fn encaps(comptime params: Params, pk: PublicKey, allocator: *std.mem.Allocator) Error!EncapsResult {
+    return try mlkem.encaps(params, pk, allocator); 
 }
 
 // Decapsulation
-pub fn decaps(comptime param_set: Params, sk: PrivateKey, ct: Ciphertext, allocator: *std.mem.Allocator) Error!SharedSecret {
-    return try mlkem.decaps(param_set, sk, ct, allocator);
+pub fn decaps(comptime params: Params, sk: PrivateKey, ct: Ciphertext, allocator: *std.mem.Allocator) Error!SharedSecret {
+    return try mlkem.decaps(params, sk, ct, allocator);
 }
 
 // Secure Key Destruction
@@ -188,7 +189,7 @@ pub fn generateRandomBytes(buffer: []u8) !void {
 
 // Benchmark example
 test "benchmark mlkem keygen" {
-    const pd = Params.kem768.get();
+	const pd = Params;
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();

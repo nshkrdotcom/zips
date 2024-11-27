@@ -17,7 +17,8 @@ pub fn samplePolyCBD(comptime pd: params.ParamDetails, allocator: *mem.Allocator
     while (i < pd.n) : (i += 1) {
         const x = sumBits(bytes[i * pd.eta1 .. i * pd.eta1 + pd.eta1]);
         const y = sumBits(bytes[pd.n * pd.eta1 + i * pd.eta1 .. pd.n * pd.eta1 + i * pd.eta1 + pd.eta1]);
-        polynomial[i] = @intCast(u16, @mod(@as(i32, x) - @as(i32, y) + pd.q, pd.q));
+		//polynomial[i] = @intCast(u16, @mod((@as(i32, x) - @as(i32, y) + pd.q, pd.q)));
+        polynomial[i] = @rem(@as(u16, x) -% @as(u16, y) +% pd.q, pd.q); // No i32 casts needed
     }
     return polynomial;
 }

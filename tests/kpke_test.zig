@@ -1,3 +1,4 @@
+//kpke_test.zig
 const std = @import("std");
 const kpke = @import("kpke.zig");
 const params = @import("params.zig");

@@ -228,13 +228,13 @@ FIPS 203 highlights the importance of constant-time operations (Section 3.3, Sec
 
 5. **Input Checking:**  FIPS 203 *requires* input checking for `ML-KEM.Encaps` and `ML-KEM.Decaps` (Section 7.2, Section 7.3).  Implement and thoroughly test the specified checks. The *encapsulation key check* (modulus check) and the *decapsulation input check* are mandatory for compliance.
 
-6. **Secure Destruction of Intermediate Values:**  The standard is very clear about destroying intermediate values (Section 3.3). Ensure sensitive data (seeds, private keys, intermediate values in `Decaps`, the implicit reject flag, etc.) is securely zeroed using `std.crypto.secureZero` *immediately* after use. This is not just a recommendation; it's a requirement for a secure implementation.
+6. **Secure Destruction of Intermediate Values:**  The standard is very clear about destroying intermediate values (Section 3.3). Ensure sensitive data (seeds, private keys, intermediate values in `Decaps`, the implicit reject flag, etc.) is securely zeroed using `crypto.secureZero` *immediately* after use. This is not just a recommendation; it's a requirement for a secure implementation.
 
 7. **No Floating-Point Arithmetic:**  FIPS 203 *forbids* floating-point arithmetic (Section 3.3).  Review your code (especially in compression/decompression and NTT) to ensure no floating-point operations are used. Implement constant-time alternatives, including for the division by `q` during compression.
 
 8. **Secure Error Handling:**  While `error.zig` defines an error set, consistent and secure error handling needs review. Ensure error messages don't leak sensitive information and that error paths don't introduce side channels.  Avoid early returns in sensitive functions if they lead to different execution times depending on secrets.
 
-9. **Memory Management and Sensitive Data:** Verify *all* allocated memory is freed, especially in error paths.  Crucially, ensure sensitive data (private keys, intermediate values in `decaps`, etc.) is securely zeroed out using `std.crypto.secureZero` *immediately* after use.
+9. **Memory Management and Sensitive Data:** Verify *all* allocated memory is freed, especially in error paths.  Crucially, ensure sensitive data (private keys, intermediate values in `decaps`, etc.) is securely zeroed out using `crypto.secureZero` *immediately* after use.
 
 10. **Review of Cryptographic Primitives:** While leveraging `std.crypto` is good, carefully review the usage of each primitive (SHAKE256, AES-GCM) to ensure compliance with FIPS 203 and best practices.  For example, is the nonce generation in `kem.zig` robust enough?
 

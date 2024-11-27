@@ -23,6 +23,19 @@ pub const PrivateKey = struct {
     arena: *std.heap.ArenaAllocator,
 };
 
+fn allocOrError(allocator: *mem.Allocator, comptime T: type, size: usize) Error![]T {
+    return allocator.alloc(T, size) catch |err| switch (err) {
+        error.OutOfMemory => Error.OutOfMemory,
+    };
+}
+
+inline fn secureZero(comptime T: type, slice: []volatile T) void {
+    for (slice) |*elem| {
+        elem.* = 0;
+        asm volatile ("" : : : "memory"); // Prevent optimizations
+    }
+}
+
 // Compress function (assumed to be implemented elsewhere)
 fn compress(comptime pd: params.ParamDetails, value: u16, bits: u8) u16 {
     // Placeholder implementation - replace with actual compression logic
@@ -32,7 +45,7 @@ fn compress(comptime pd: params.ParamDetails, value: u16, bits: u8) u16 {
 }
 
 // K-PKE Key Generation
-pub fn keygen(comptime pd: params.ParamDetails, allocator: *mem.Allocator) Error!struct{PublicKey, PrivateKey} {
+pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!struct{PublicKey, PrivateKey} {
     var arena = try std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();
@@ -131,7 +144,8 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: *mem.Allocator) Error
 
 
 // K-PKE Encryption
-pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const u8, allocator: *mem.Allocator) Error![]u8 {
+pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const u8, allocator: mem.Allocator) Error![]u8 {
+//pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const u8, allocator: *const mem.Allocator) Error![]u8 {
     //_ = pd;
     //_ = pk;
     //_ = message;
@@ -155,7 +169,7 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     // ... (This part depends on the exact structure of your PublicKey.  Example below)
     const tBytes = pk.t;
     const publicKey_t = try utils.bytesToPolynomial(pd, tBytes);
-    var publicKey_A_hat = try allocator.alloc(ntt.RqTq(pd), pd.k * pd.k); // allocate A_hat directly
+	var publicKey_A_hat = try allocOrError(allocator, ntt.RqTq(pd), pd.k * pd.k);
     defer allocator.free(publicKey_A_hat);
     var rho = pk.rho;
     for (0..pd.k) |i| {
@@ -185,13 +199,13 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     }
 
     // Perform matrix-vector multiplication (A^T * y) and add e1
-    var u_hat = try allocator.alloc(ntt.RqTq(pd), pd.k);
+    var u_hat = try allocOrError(allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(u_hat);
 
     // Initialize u_hat to zeroes (important!)
     std.mem.zeroes(u_hat);
 
-    const y_hat = try allocator.alloc(ntt.RqTq(pd), pd.k);
+    const y_hat = try allocOrError(allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(y_hat);
 
     for (0..pd.k) |i| ntt.ntt(pd, &y[i]);
@@ -212,7 +226,7 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
         for (0..pd.n) |k| u_hat[i][k] = @as(u16, @mod(@as(u32, u_hat[i][k]) +  @as(u32, e1[i][k]), pd.q));
     }
 
-    var u = try allocator.alloc(ntt.RqTq(pd), pd.k);
+    var u = try allocOrError(allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(u);
     for (0..pd.k) |i| {
         ntt.nttInverse(pd, &u_hat[i]);
@@ -223,7 +237,7 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 
     // perform ntt on publicKey_t and m
 
-    var publicKey_t_hat = try allocator.alloc(ntt.RqTq(pd), pd.k);
+    var publicKey_t_hat = try allocOrError(allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(publicKey_t_hat);
     std.mem.copy(ntt.RqTq(pd), publicKey_t_hat, &publicKey_t);
 
@@ -252,15 +266,16 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 		v_hat[k] = @as(u16, @mod(@as(u32, v_hat[k]) + @as(u32, m_hat[k]), pd.q));
     }
 
-    var v = ntt.RqTq(pd){};
+    //var v = ntt.RqTq(pd){};
+	var v = try allocOrError(allocator, ntt.RqTq(pd), pd.n);
     ntt.nttInverse(pd, &v_hat);
     std.mem.copy(u8, std.mem.asBytes(&v), std.mem.asBytes(&v_hat));
 
     // Compress and encode u and v
-    var c1 = try allocator.alloc(u8, pd.k * pd.n * pd.du/8);
+    var c1 = try allocOrError(allocator, u8, pd.k * pd.n * pd.du/8);
     defer allocator.free(c1);
 
-    var c2 = try allocator.alloc(u8, pd.n * pd.dv/8);
+    var c2 = try allocOrError(allocator, u8, pd.n * pd.dv/8);
     defer allocator.free(c2);
 
     // COMPRESSION AND ENCODING (using constant-time operations where appropriate)
@@ -274,7 +289,7 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
         const compressed_v = compress(pd, v[j], pd.dv);
         std.mem.writeIntLittle(u16, c2[j * 2.. (j+1) * 2], compressed_v);
     }
-    var ciphertext = try allocator.alloc(u8, c1.len + c2.len);
+    var ciphertext = try allocOrError(allocator, u8, c1.len + c2.len);
     defer allocator.free(ciphertext);
     std.mem.copy(u8, ciphertext, c1);
     std.mem.copy(u8, ciphertext[c1.len..], c2);
@@ -288,10 +303,11 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: []c
     const u_bytes = ciphertext[0..pd.k * pd.n * pd.du/8];
     const v_bytes = ciphertext[pd.k * pd.n * pd.du/8..];
 
-    var u = try allocator.alloc(ntt.RqTq(pd), pd.k);
+    var u = try allocOrError(allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(u);
 
-    var v = ntt.RqTq(pd){};
+    //var v = ntt.RqTq(pd){};
+	var v = try allocOrError(allocator, ntt.RqTq(pd), pd.n);
 
     // Decode u
     for (0..pd.k) |i| {
@@ -306,13 +322,13 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: []c
     }
 
     // 2. Compute s^T * u
-    var s_hat = try allocator.alloc(ntt.RqTq(pd), pd.k);
+    var s_hat = try allocOrError(allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(s_hat);
     for (0..pd.k) |i| {
         std.mem.copy(ntt.RqTq(pd), &s_hat[i], &sk.s[i]);
         ntt.ntt(pd, &s_hat[i]);
     }
-    var u_hat = try allocator.alloc(ntt.RqTq(pd), pd.k);
+	var u_hat = try allocOrError(allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(u_hat);
     for (0..pd.k) |i| {
         ntt.ntt(pd, &u[i]);
@@ -344,14 +360,14 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: []c
 pub fn destroyPrivateKey(sk: *PrivateKey) void {
     // ... securely zero out and deallocate private key data
 	// Securely zero out the private key polynomial
-    std.crypto.secureZero(u16, sk.s);
+    secureZero(u16, sk.s);
     sk.arena.deinit(); // Free all memory allocated by the arena, including sk.s
     // Zero out other sensitive data if needed
 }
 
 pub fn destroyPublicKey(pk: *PublicKey) void {
-	std.crypto.secureZero(u8, pk.t);       // Zero out the sensitive polynomial t
-    pk.arena.deinit();  // Free the memory occupied by t (and the arena itself)
+	secureZero(u8, pk.t);       // Zero out the sensitive polynomial t
+	//pk.arena.deinit();  // Free the memory occupied by t (and the arena itself)
 }
 
 const expectError = std.testing.expectError;
@@ -373,7 +389,7 @@ test "k-pke encrypt and decrypt are inverses" {
     const allocator = gpa.allocator();
     const result = try keygen(pd, allocator);
     const pk = result[0];
-    const sk = result[1];
+    var sk = result[1];
     defer destroyPrivateKey(&sk);
     
     const message = "this is my message";

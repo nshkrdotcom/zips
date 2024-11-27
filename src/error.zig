@@ -1,3 +1,4 @@
+//error.zig
 const std = @import("std");
 
 pub const Error = error{
@@ -11,7 +12,8 @@ pub const Error = error{
     DecapsulationFailure,
     RandomnessFailure,
     AllocationFailure,
-    InvalidInput, // Generic invalid input error
+    InvalidInput,
+	OutOfMemory,
 };
 
 // Optional custom error type if needed

@@ -39,7 +39,7 @@ pub fn main() !void {
     const sk = keypair.privateKey;
 
     // 3. Encapsulate
-     const encapsulation = try kem.encaps(param_set, pk, allocator);
+    const encapsulation = try kem.encaps(param_set, pk, allocator);
     defer kem.destroyCiphertext(&encapsulation.ciphertext);
     const ct = encapsulation.ciphertext;
     const shared_secret = encapsulation.shared_secret;
@@ -80,6 +80,38 @@ pub fn main() !void {
 
 ```mermaid
 graph TD
+    subgraph TV["Test&nbsp;Vectors"]
+        kat_vectors_512
+        kat_vectors_768
+        kat_vectors_1024
+    end
+
+    subgraph SC["std.crypto"]
+        aead
+        hash
+        random
+    end
+
+    subgraph Tests["Tests"]
+        ntt_test
+        cbd_test
+        utils_test
+        mlkem_test
+        kpke_test
+    end
+
+    subgraph Core["Core"]
+        kem
+        mlkem
+        kpke
+        cbd
+        ntt
+        utils
+        params
+        error
+        rng
+    end
+    
     kem --> mlkem
     mlkem --> kpke
     kpke --> ntt
@@ -88,12 +120,6 @@ graph TD
     kpke --> params
     cbd --> rng
     mlkem --> rng
-    example --> kem
-    subgraph SC["std.crypto"]
-        aead
-        hash
-        random
-    end
     kem --> aead
     kem --> random
     kpke --> hash
@@ -103,13 +129,9 @@ graph TD
     mlkem --> error
     kpke --> error
     cbd --> error
-    subgraph Tests["Tests"]
-        ntt_test
-        cbd_test
-        utils_test
-        test_vectors --> mlkem_test
-        test_vectors --> kpke_test
-    end
+
+    example --> kem
+
     ntt_test --> ntt
     ntt_test --> params
     cbd_test --> cbd
@@ -124,6 +146,13 @@ graph TD
     Tests --> std.testing
     Tests --> SC
     Tests --> error
+
+    kat_vectors_512 --> mlkem_test
+    kat_vectors_512 --> kpke_test
+    kat_vectors_768 --> mlkem_test
+    kat_vectors_768 --> kpke_test
+    kat_vectors_1024 --> mlkem_test
+    kat_vectors_1024 --> kpke_test
 ```
 
 ## Building

@@ -3,14 +3,6 @@ const std = @import("std");
 
 const test_targets = [_]std.Target.Query{
     .{}, // native
-    // .{
-    //     .cpu_arch = .x86_64,
-    //     .os_tag = .linux,
-    // },
-    // .{
-    //     .cpu_arch = .aarch64,
-    //     .os_tag = .macos,
-    // },
 };
 
 pub fn build(b: *std.Build) void {

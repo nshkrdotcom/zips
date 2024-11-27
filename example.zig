@@ -21,7 +21,7 @@ pub fn main() !void {
     const sk = keypair.privateKey;
 
     // 3. Encapsulate
-     const encapsulation = try kem.encaps(param_set, pk, allocator);
+    const encapsulation = try kem.encaps(param_set, pk, allocator);
     defer kem.destroyCiphertext(&encapsulation.ciphertext);
     const ct = encapsulation.ciphertext;
     const shared_secret = encapsulation.shared_secret;

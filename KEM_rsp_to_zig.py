@@ -56,7 +56,7 @@ def generate_zig_file(vectors, filename, compress=False, security_level="512"):
 """
     zig_code += "};\n"
     data_to_write = zig_code.encode('utf-8')
-    directory = "vector"
+    directory = "vectors"
     if not os.path.exists(directory):
         os.makedirs(directory)
     with open(directory + '/' + filename, "wb") as f:

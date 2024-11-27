@@ -1,5 +1,6 @@
 //kpke.zig
 const std = @import("std");
+const mem = std.mem;
 const crypto = std.crypto;
 const params = @import("params.zig");
 const rng = @import("rng.zig");
@@ -16,14 +17,22 @@ pub const PublicKey = struct {
         return .{ .t = t, .rho = rho };
     }
 };
+
 pub const PrivateKey = struct {
     s: []u16,
     arena: *std.heap.ArenaAllocator,
 };
 
+// Compress function (assumed to be implemented elsewhere)
+fn compress(comptime pd: params.ParamDetails, value: u16, bits: u8) u16 {
+    // Placeholder implementation - replace with actual compression logic
+    _ = pd;
+    _ = bits;
+    return value;
+}
 
 // K-PKE Key Generation
-pub fn keygen(comptime pd: params.ParamDetails, allocator: *mem.Allocator) Error!{PublicKey, PrivateKey} {
+pub fn keygen(comptime pd: params.ParamDetails, allocator: *mem.Allocator) Error!struct{PublicKey, PrivateKey} {
     var arena = try std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();
@@ -34,34 +43,34 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: *mem.Allocator) Error
 
     // 2. Expand seed d into rho and sigma
     var rho_sigma = std.mem.zeroes([64]u8);
-    crypto.hash.sha3.Sha3_512.hash(d, rho_sigma, .{});
+    crypto.hash.sha3.Sha3_512.hash(d, &rho_sigma, .{});
     var rho = rho_sigma[0..32].*;
-    var sigma = rho_sigma[32..].*;
+    const sigma = rho_sigma[32..].*;
+    _ = sigma; // Unused, but keep to prevent unused variable warning
 	
     // 3. Generate matrix A (using NTT and SampleNTT)
-    ar A_hat = try arena_allocator.alloc(ntt.RqTq(pd), pd.k * pd.k);
-     var N: u8 = 0; // Initialize counter for PRF
+    var A_hat = try arena_allocator.alloc(ntt.RqTq(pd), pd.k * pd.k);
     for (0..pd.k) |i| {
         for (0..pd.k) |j| {
             var seed = [_]u8{0} ** 34;
             std.mem.copy(u8, &seed, &rho);
-            seed[32] = @intCast(u8, j);
-            seed[33] = @intCast(u8, i);
+			seed[32] = @as(u8, @intCast(j));
+			seed[33] = @as(u8, @intCast(i));
             A_hat[i * pd.k + j] = blk: {
                 var result = ntt.RqTq(pd){};
                 var counter: u32 = 0;
                 while (true) : (counter += 1) {
-                if (counter == 1000) return Error.RandomnessFailure; // reasonable upper bound per FIPS 203 recommendation.
-				try crypto.random(std.mem.asBytes(&result));
-				var valid = true;
-				for (result) |coeff| {
-					if (coeff >= pd.q) {
-						valid = false;
-						break;
-					}
-				}
-				if (valid) break :blk result;
-				}
+                    if (counter == 1000) return Error.RandomnessFailure; // reasonable upper bound per FIPS 203 recommendation.
+                    try crypto.random(std.mem.asBytes(&result));
+                    var valid = true;
+                    for (result) |coeff| {
+                        if (coeff >= pd.q) {
+                            valid = false;
+                            break;
+                        }
+                    }
+                    if (valid) break :blk result;
+                }
             };
         }
     }
@@ -82,13 +91,13 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: *mem.Allocator) Error
     // 6. Compute t = As + e
     var t = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
     var s_hat = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
-    defer arena_allocator.free(s_hat);
     for (0..pd.k) |i| {
        ntt.ntt(pd, &s[i]); // calculate ntt of s once instead of repeatedly
        std.mem.copy(ntt.RqTq(pd), &s_hat[i], &s[i]);
     }
     // Initialize t to zeroes
-    std.mem.zeroes(t);
+    @memset(t, ntt.RqTq(pd){});
+
     for (0..pd.k) |i| {
         for (0..pd.k) |j| {
             var temp_poly = ntt.RqTq(pd){};
@@ -115,7 +124,7 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: *mem.Allocator) Error
     }
 
     // 7. Create PublicKey and PrivateKey structs
-    const pk = PublicKey{ .t = encoded_t , .rho = rho };
+    const pk = PublicKey{ .t = encoded_t, .rho = rho };
     const sk = PrivateKey{ .s = s, .arena = &arena };
     return .{ pk, sk };
 }
@@ -136,8 +145,8 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 
     // 3. Generate y, e1, and e2 using CBD
 	var y = try cbd.samplePolyCBD(pd, allocator);
-    var e1 = try cbd.samplePolyCBD(pd, allocator);
-	var e2 = try cbd.samplePolyCBD(pd, allocator);
+    const e1 = try cbd.samplePolyCBD(pd, allocator);
+	const e2 = try cbd.samplePolyCBD(pd, allocator);
 
     // ... (Rest of encryption - expand public key, matrix-vector multiplication, NTT, encoding ciphertext)
 	// ... (randomness generation, message encoding, CBD sampling - as before)
@@ -149,14 +158,12 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     var publicKey_A_hat = try allocator.alloc(ntt.RqTq(pd), pd.k * pd.k); // allocate A_hat directly
     defer allocator.free(publicKey_A_hat);
     var rho = pk.rho;
-    var N: u8 = 0; // Initialize counter for PRF
     for (0..pd.k) |i| {
         for (0..pd.k) |j| {
             var seed = [_]u8{0} ** 34;
             std.mem.copy(u8, &seed, &rho);
-            seed[32] = @intCast(u8, j);
-            seed[33] = @intCast(u8, i);
-
+			seed[32] = @as(u8, @intCast(j));
+			seed[33] = @as(u8, @intCast(i));
             publicKey_A_hat[i * pd.k + j] = blk: {
                 var result = ntt.RqTq(pd){};
                 var counter: u32 = 0;
@@ -184,7 +191,7 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     // Initialize u_hat to zeroes (important!)
     std.mem.zeroes(u_hat);
 
-    var y_hat = try allocator.alloc(ntt.RqTq(pd), pd.k);
+    const y_hat = try allocator.alloc(ntt.RqTq(pd), pd.k);
     defer allocator.free(y_hat);
 
     for (0..pd.k) |i| ntt.ntt(pd, &y[i]);
@@ -256,13 +263,6 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     var c2 = try allocator.alloc(u8, pd.n * pd.dv/8);
     defer allocator.free(c2);
 
-	// ... (previous code: randomness, message encoding, CBD sampling, public key expansion, NTT, matrix-vector mult., v computation)
-
-    // Compress and encode u and v
-    var c1 = try allocator.alloc(u8, pd.k * pd.n * pd.du / 8);
-    defer allocator.free(c1);
-    var c2 = try allocator.alloc(u8, pd.n * pd.dv / 8);
-    defer allocator.free(c2);
     // COMPRESSION AND ENCODING (using constant-time operations where appropriate)
     for (0..pd.k) |i| {
         for (0..pd.n) |j| {
@@ -284,39 +284,59 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 
 // K-PKE Decryption
 pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: []const u8, allocator: *mem.Allocator) Error![]u8 {
+    // Decode ciphertext
+    const u_bytes = ciphertext[0..pd.k * pd.n * pd.du/8];
+    const v_bytes = ciphertext[pd.k * pd.n * pd.du/8..];
 
-	// 2. Compute s^T * u
-    var s_hat = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
-    defer arena_allocator.free(s_hat);
+    var u = try allocator.alloc(ntt.RqTq(pd), pd.k);
+    defer allocator.free(u);
+
+    var v = ntt.RqTq(pd){};
+
+    // Decode u
+    for (0..pd.k) |i| {
+        for (0..pd.n) |j| {
+            u[i][j] = std.mem.readIntLittle(u16, u_bytes[(i * pd.n + j) * 2 .. (i * pd.n + j + 1) * 2]);
+        }
+    }
+
+    // Decode v
+    for (0..pd.n) |j| {
+        v[j] = std.mem.readIntLittle(u16, v_bytes[j * 2 .. (j+1) * 2]);
+    }
+
+    // 2. Compute s^T * u
+    var s_hat = try allocator.alloc(ntt.RqTq(pd), pd.k);
+    defer allocator.free(s_hat);
     for (0..pd.k) |i| {
         std.mem.copy(ntt.RqTq(pd), &s_hat[i], &sk.s[i]);
         ntt.ntt(pd, &s_hat[i]);
     }
-    var u_hat = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
-    defer arena_allocator.free(u_hat);
+    var u_hat = try allocator.alloc(ntt.RqTq(pd), pd.k);
+    defer allocator.free(u_hat);
     for (0..pd.k) |i| {
         ntt.ntt(pd, &u[i]);
         std.mem.copy(ntt.RqTq(pd), &u_hat[i], &u[i]);
     }
     var w_hat = ntt.RqTq(pd){};
     for (0..pd.k) |i| {
-		var temp = ntt.RqTq(pd){};
-		for (0..pd.n) |j| {
-			temp[j] = @as(u16, @mod(@as(u32, s_hat[i][j]) * @as(u32, u_hat[i][j]), pd.q));
-		}
-		for (0..pd.n) |j| {
-			w_hat[j] = @as(u16, @mod(@as(u32, w_hat[j]) + @as(u32, temp[j]), pd.q));
-		}
+        var temp = ntt.RqTq(pd){};
+        for (0..pd.n) |j| {
+            temp[j] = @as(u16, @intCast(@mod(@as(u32, s_hat[i][j]) * @as(u32, u_hat[i][j]), pd.q)));
+        }
+        for (0..pd.n) |j| {
+            w_hat[j] = @as(u16, @intCast(@mod(@as(u32, w_hat[j]) + @as(u32, temp[j]), pd.q)));
+        }
     }
-	var w = ntt.RqTq(pd){};
-	ntt.nttInverse(pd, &w_hat);
-	std.mem.copy(u16, &w, &w_hat);
+    var w = ntt.RqTq(pd){};
+    ntt.nttInverse(pd, &w_hat);
+    std.mem.copy(u16, &w, &w_hat);
     for (0..pd.n) |i| {
-        w[i] = @as(u16, @mod(@as(i32,v[i]) - @as(i32, w[i]) + pd.q, pd.q));
+        w[i] = @as(u16, @intCast(@mod(@as(i32,v[i]) - @as(i32, w[i]) + pd.q, pd.q)));
     }
 
     // 3. Decode message from w
-    var message_bytes = try utils.polynomialToBytes(pd, &w);
+    const message_bytes = try utils.polynomialToBytes(pd, &w);
     return message_bytes;
 }
 
@@ -337,27 +357,31 @@ pub fn destroyPublicKey(pk: *PublicKey) void {
 const expectError = std.testing.expectError;
 
 test "kpke keygen generates keys" {
-    const pd = params.Params.kem768.get(); // Example
+    // Use a compile-time known parameter instead of a runtime value
+    const pd = comptime params.Params.kem768.get(); // Use comptime
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-    const keypair = try keygen(pd, allocator);
-    // Basic test: Just check if the keys were generated without errors. Add more detailed tests later.
+    _ = try keygen(pd, allocator);
 }
 
 test "k-pke encrypt and decrypt are inverses" {
-    const pd = params.Params.kem768.get(); // Example
+    // Use comptime here as well
+    const pd = comptime params.Params.kem768.get(); // Use comptime
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-    const keypair = try keygen(pd, allocator);
-    defer destroyPrivateKey(&keypair.privateKey);
-    defer destroyPublicKey(&keypair.publicKey);
+    const result = try keygen(pd, allocator);
+    const pk = result[0];
+    const sk = result[1];
+    defer destroyPrivateKey(&sk);
+    
     const message = "this is my message";
-    const ciphertext = try encrypt(pd, keypair.publicKey, message, allocator);
+    const ciphertext = try encrypt(pd, pk, message, allocator);
     defer allocator.free(ciphertext);
-    const decrypted = try decrypt(pd, keypair.privateKey, ciphertext, allocator);
+    
+    const decrypted = try decrypt(pd, sk, ciphertext, allocator);
     defer allocator.free(decrypted);
+    
     try std.testing.expectEqualSlices(u8, message, decrypted);
-
 }

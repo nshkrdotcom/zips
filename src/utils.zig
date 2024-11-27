@@ -2,6 +2,7 @@
 const std = @import("std");
 const params = @import("params.zig");
 const rng = @import("rng.zig");
+const mlkem = @import("mlkem.zig"); // Import mlkem instead of using 'kem'
 const Error = @import("error.zig").Error;
 
 pub fn bytesToPolynomial(comptime pd: params.ParamDetails, bytes: []const u8) Error![]u16 {
@@ -11,7 +12,7 @@ pub fn bytesToPolynomial(comptime pd: params.ParamDetails, bytes: []const u8) Er
     var polynomial = std.mem.zeroes([pd.n]u16);
     for (bytes, 0..) |byte, i| {
         for (0..8) |j| {
-            polynomial[i * 8 + j] = @intCast(u16, (byte >> j) & 1);
+            polynomial[i * 8 + j] = @as(u16, @intCast((byte >> j) & 1));
         }
     }
     return polynomial;
@@ -23,7 +24,7 @@ pub fn polynomialToBytes(comptime pd: params.ParamDetails, polynomial: []const u
     for (0..pd.n / 8) |i| {
         var byte: u8 = 0;
         for (0..8) |j| {
-            byte |= @intCast(u8, polynomial[i * 8 + j]) << j;
+            byte |= @as(u8, @intCast(polynomial[i * 8 + j])) << j;
         }
         bytes[i] = byte;
     }
@@ -31,9 +32,9 @@ pub fn polynomialToBytes(comptime pd: params.ParamDetails, polynomial: []const u
 }
 
 pub fn computeZeta(comptime pd: params.ParamDetails, i: u8) u16 {
-    var zeta: u16 = 17;
-    var power: u16 = std.math.pow(u16, 17, @intCast(u16, std.math.pow(u32, 2, @intCast(u32, i))));
-    zeta = @mod(power, pd.q);
+    const inner_power = std.math.pow(u32, 2, @intCast(i));
+    const power: u16 = std.math.pow(u16, 17, @intCast(inner_power));
+    const zeta: u16 = @mod(power, pd.q);
     return zeta;
 }
 
@@ -54,7 +55,7 @@ pub fn computeNInverse(comptime n: u16, comptime q: u16) u16 {
     if (r > 1) {
         @panic("Value 'n' does not have a multiplicative inverse modulo q");
     }
-    return @intCast(u16, @mod(if (t < 0) t + q else t, q)); // Ensure positive result
+    return @intCast(@mod(if (t < 0) t + q else t, q)); // Ensure positive result
 }
 
 // Pre-compute modular inverse (for constant-time division)
@@ -67,107 +68,7 @@ pub fn precomputeInverse(comptime modulus: u32) u32 {
     // Ensure newr is within the valid range for u32 operations
     while (true) {
         try rng.generateRandomBytes(std.mem.asBytes(&newr));
-        if (newr < modulus and newr !=0) break;
-    }
-     while (newr != 0) {
-        const quotient = @divTrunc(r, newr);
-        const temp_t = @mod(t - quotient * newt, modulus);
-        t = newt;
-        newt = temp_t;
-        const temp_r = @mod(r - quotient * newr, modulus);
-        r = newr;
-        newr = temp_r;
-    }
-    if (r > 1) {
-        @panic("Modulus is not prime");
-    }
-    return if (t < 0) t + modulus else t; // Ensure positive
-}
-
-// Constant-time multiplication (example using Montgomery multiplication)
-// (This is a simplified example. A real-world implementation would use optimized assembly or specialized libraries)
-pub fn constantTimeMul(a: u32, b: u32, comptime modulus: u32) u32 {
-    _ = modulus;
-    var result: u32 = 0;
-    var temp_a = a;
-    var temp_b = b;
-    for (0..32) |_| {
-        const multiply = @boolToInt((@as(u32, 1) & temp_b) !=0);
-        result = @as(u32, result + multiply * temp_a);
-        temp_a <<= @as(u5, 1);
-        temp_b >>= @as(u5, 1);
-    }
-    return result; // No final reduction needed for Montgomery multiplication, in normal implementation
-}
-
-// Constant-time compression function (adjust data types as needed)
-//fn compress(comptime pd: params.ParamDetails, x: u16, d: u8) u16 {
-//    const x_u32 = @as(u32, x);
-//    const two_to_d = std.math.pow(u32, 2, @intCast(u32, d));
-//    var result = @as(u32, @divTrunc(x_u32 * two_to_d , pd.q));
-//    result = result + @as(u32, @boolToInt(@mod(x_u32 * two_to_d, pd.q) !=0));
-//    return @intCast(u16, result);
-//}
-//fn compress(comptime pd: params.ParamDetails, x: u16, d: u8) u16 {
-//    const x_u32 = @as(u32, x);
-//    const two_to_d = @as(u32, 1) << d; // Constant-time power of 2
-//    // Replace @divTrunc with a constant-time division implementation. Example using pre-computed inverse:
-//    const q_inverse = precomputeInverse(pd.q); // Function to pre-compute inverse (in utils.zig)
-//    var result = constantTimeMul(x_u32 * two_to_d, q_inverse); // Constant-time multiplication function
-//    result = result + @as(u32, @boolToInt(constantTimeMod(x_u32 * two_to_d, pd.q) !=0)); // constant time mod
-//    return @intCast(u16, result);
-//}
-// Constant-time compression function
-pub fn compress(comptime pd: params.ParamDetails, x: u16, d: u8) u16 {
-    const x_u32 = @as(u32, x);
-    const two_to_d = @as(u32, 1) << d; // Constant-time power of 2
-
-    // Constant-time division (using precomputed inverse if available)
-    const q_inverse = precomputeInverse(pd.q);
-    var result = constantTimeMul(x_u32 * two_to_d, q_inverse, pd.q);
-
-    // Constant-time modular arithmetic for remainder check
-    result = result + @as(u32, @boolToInt(constantTimeMod(x_u32 * two_to_d, pd.q) != 0));
-
-    return @intCast(u16, result);
-}
-
-// Decompression function (inverse of compress)
-pub fn decompress(comptime pd: params.ParamDetails, x: u16, d: u8) u16 {
-    const two_to_d = @as(u32, 1) << d; // Constant-time power of 2
-    return @intCast(u16, @divTrunc(@as(u32, x) * pd.q, two_to_d));
-}
-
-// Constant-time modular multiplication (Montgomery multiplication - simplified example)
-pub fn constantTimeMul(a: u32, b: u32, comptime modulus: u32) u32 {
-    var result: u32 = 0;
-    var temp_a = a;
-    var temp_b = b;
-
-    for (0..32) |_| {
-        const multiply = @boolToInt((@as(u32, 1) & temp_b) != 0);
-        result = @as(u32, @mod(result + multiply * temp_a, modulus)); // Modular addition
-        temp_a = @mod(temp_a << @as(u5, 1), modulus);            // Modular shift
-        temp_b >>= @as(u5, 1);
-    }
-    return result;
-}
-
-// Constant-time modular reduction
-fn constantTimeMod(x: u32, comptime modulus: u32) u32 {
-    return @mod(x, modulus); // Replace with constant-time implementation if needed.
-}
-
-// Pre-compute modular inverse for constant-time division
-pub fn precomputeInverse(comptime modulus: u32) u32 {
-     var t: u32 = 0;
-    var newt: u32 = 1;
-    var r: u32 = modulus;
-    var newr: u32 = modulus; // Start with some value not divisible by modulus
-    // Ensure newr is within the valid range for u32 operations
-    while (true) {
-        try rng.generateRandomBytes(std.mem.asBytes(&newr));
-        if (newr < modulus and newr !=0) break;
+        if (newr < modulus and newr != 0) break;
     }
     while (newr != 0) {
         const quotient = @divTrunc(r, newr);
@@ -178,32 +79,71 @@ pub fn precomputeInverse(comptime modulus: u32) u32 {
         r = newr;
         newr = temp_r;
     }
-
     if (r > 1) {
         @panic("Modulus is not prime");
     }
-    return @mod(if (t < 0) t + modulus else t,modulus); // Ensure positive
+    return @mod(if (t < 0) t + modulus else t, modulus); // Ensure positive
 }
 
-// In utils.zig
-pub fn decodePublicKey(comptime pd: params.ParamDetails, pk_bytes: []const u8) !kem.PublicKey {
+// Constant-time multiplication (simplified example using Montgomery multiplication)
+pub fn constantTimeMul(a: u32, b: u32, comptime modulus: u32) u32 {
+    var result: u32 = 0;
+    var temp_a = a;
+    var temp_b = b;
+    for (0..32) |_| {
+        const multiply = @intFromBool((@as(u32, 1) & temp_b) != 0);
+        result = @mod(result + multiply * temp_a, modulus); // Modular addition
+        temp_a = @mod(temp_a << @as(u5, 1), modulus);      // Modular shift		
+        temp_b >>= @as(u5, 1);
+    }
+    return result;
+}
+
+// Constant-time compression function
+pub fn compress(comptime pd: params.ParamDetails, x: u16, d: u8) u16 {
+    const x_u32 = @as(u32, x);
+    const two_to_d = @as(u32, 1) << d; // Constant-time power of 2
+
+    // Constant-time division (using precomputed inverse if available)
+    const q_inverse = precomputeInverse(pd.q);
+    var result = constantTimeMul(x_u32 * two_to_d, q_inverse, pd.q);
+
+    // Constant-time modular arithmetic for remainder check
+    result = result + @as(u32, @intFromBool(constantTimeMod(x_u32 * two_to_d, pd.q) != 0));
+
+    return @intCast(result);
+}
+
+// Decompression function (inverse of compress)
+pub fn decompress(comptime pd: params.ParamDetails, x: u16, d: u8) u16 {
+    const two_to_d = @as(u32, 1) << d; // Constant-time power of 2
+    return @intCast(@divTrunc(@as(u32, x) * pd.q, two_to_d));
+}
+
+// Constant-time modular reduction
+fn constantTimeMod(x: u32, comptime modulus: u32) u32 {
+    return @mod(x, modulus); // Replace with constant-time implementation if needed.
+}
+
+// Updated decoding functions to use mlkem instead of kem
+pub fn decodePublicKey(_: params.ParamDetails, pk_bytes: []const u8) !mlkem.PublicKey {
     const t = pk_bytes[0..pk_bytes.len - 32];
     const rho_src = pk_bytes[pk_bytes.len - 32..]; // Source rho
     var arena = try std.heap.ArenaAllocator.init(std.heap.page_allocator);
     errdefer arena.deinit(); // Defer arena deallocation
-    var publicKey_t = try arena.allocator().alloc(u8, t.len);
+    const publicKey_t = try arena.allocator().alloc(u8, t.len);
     errdefer arena.allocator().free(publicKey_t);
     std.mem.copy(u8, publicKey_t, t);
-    var rho = try arena.allocator().alloc(u8, 32); // Allocate for rho in the arena
+    const rho = try arena.allocator().alloc(u8, 32); // Allocate for rho in the arena
     errdefer arena.allocator().free(rho);
     std.mem.copy(u8, rho, rho_src); // Copy the rho data
     return .{ .t = publicKey_t, .rho = rho, .arena = &arena };
 }
 
-pub fn decodePrivateKey(comptime pd: params.ParamDetails, sk_bytes: []const u8) !kem.PrivateKey {
+pub fn decodePrivateKey(comptime pd: params.ParamDetails, sk_bytes: []const u8) !mlkem.PrivateKey {
     var arena = try std.heap.ArenaAllocator.init(std.heap.page_allocator);
     errdefer arena.deinit();
-    var sk = try arena.allocator().create(kem.PrivateKey);
+    var sk = try arena.allocator().create(mlkem.PrivateKey);
     sk.arena = &arena;
     for (0..pd.k) |i| {
         for (0..pd.n) |j| {
@@ -213,19 +153,16 @@ pub fn decodePrivateKey(comptime pd: params.ParamDetails, sk_bytes: []const u8) 
     return sk;
 }
 
-pub fn decodeCiphertext(comptime pd: params.ParamDetails, ct_bytes: []const u8) !kem.Ciphertext {
+pub fn decodeCiphertext(comptime pd: params.ParamDetails, ct_bytes: []const u8) !mlkem.Ciphertext {
     if (ct_bytes.len != pd.ciphertextBytes) { // validate ciphertext length before creating the arena or allocating
         return error.InvalidCiphertext;
     }
     var arena = try std.heap.ArenaAllocator.init(std.heap.page_allocator);
     errdefer arena.deinit();
-    var ct = try arena.allocator().alloc(u8, ct_bytes.len);
+    const ct = try arena.allocator().alloc(u8, ct_bytes.len);
     errdefer arena.allocator().free(ct);
     std.mem.copy(u8, ct, ct_bytes);
     return ct;
-// Or...if the data being passed to this function is allocated in the caller's scope 
-// as is the case in our test functions, do this instead for slight perf increase:
-	//return ct_bytes[0..pd.ciphertextBytes];
 }
 
 const expectEqual = std.testing.expectEqual;
@@ -234,7 +171,7 @@ const expectError = std.testing.expectError;
 test "bytesToPolynomial and polynomialToBytes are inverses" {
     const pd = params.Params.kem768.get(); // Example parameter set
     var bytes: [32]u8 = undefined;
-    for (bytes, 0..) |*b, i| b.* = @intCast(u8, i);
+    for (bytes, 0..) |*b, i| b.* = @intCast(i);
     const polynomial = try bytesToPolynomial(pd, &bytes);
     const recovered_bytes = try polynomialToBytes(pd, &polynomial);
     try expectEqual(bytes, recovered_bytes);
@@ -244,7 +181,6 @@ test "bytesToPolynomial errors on incorrect input length" {
     const pd = params.Params.kem768.get(); // Example parameter set
     var bytes: [31]u8 = undefined; // Incorrect length
     try expectError(Error.InvalidInput, bytesToPolynomial(pd, &bytes));
-
 }
 
 test "polynomialToBytes errors on incorrect input length" {
@@ -276,11 +212,9 @@ test "precomputeInverse is correct" {
 
 test "utils functions" {
     const pd = params.Params.kem768.get();
-    // ... your existing utils tests
     // Test compress/decompress
     const x: u16 = 1234;
     const compressed_x = compress(pd, x, pd.du);
     const decompressed_x = decompress(pd, compressed_x, pd.du);
-	expectEqual(x, decompressed_x);
-    // ... add tests for other utility functions
+    try expectEqual(x, decompressed_x);
 }

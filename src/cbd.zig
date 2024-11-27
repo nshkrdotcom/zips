@@ -1,6 +1,7 @@
 //cbd.zig
 const std = @import("std");
 const crypto = std.crypto;
+const mem = std.mem;
 const params = @import("params.zig");
 const rng = @import("rng.zig");
 const utils = @import("utils.zig");

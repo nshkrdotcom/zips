@@ -5,7 +5,6 @@ const utils = @import("utils.zig");
 const expectEqual = std.testing.expectEqual;
 
 
-// Assuming your KAT vector files are like this:
 const kat_vectors_512 = @import("vectors/kat_vectors_512_small.zig").kat_vectors_512;
 const kat_vectors_768 = @import("vectors/kat_vectors_768_small.zig").kat_vectors_768;
 const kat_vectors_1024 = @import("vectors/kat_vectors_1024_small.zig").kat_vectors_1024;

@@ -6,6 +6,7 @@ const rng = @import("rng.zig");
 const utils = @import("utils.zig");
 const kpke = @import("kpke.zig");
 const Error = @import("error.zig").Error;
+const mem = std.mem; // Import std.mem
 
 // Define ML-KEM key and ciphertext types
 pub const PublicKey = kpke.PublicKey;    // Reuse kpke's PublicKey
@@ -13,13 +14,14 @@ pub const PrivateKey = kpke.PrivateKey; // Reuse kpke's PrivateKey
 pub const Ciphertext = []u8;           // Ciphertext will be a byte array
 
 // Key Generation
-pub fn keygen(comptime pd: params.ParamDetails, allocator: *mem.Allocator) Error!{PublicKey, PrivateKey} {
+pub fn keygen(comptime pd: params.ParamDetails, allocator: *mem.Allocator) Error!kpke.KeyPair {
     return try kpke.keygen(pd, allocator);
+
 }
 
 //Be sure to review the exact FO transform requirements in the standard to ensure your implementation is perfectly compliant. Pay close attention to constant-time operations when implementing the comparison of ciphertexts ( c and c' ), as this comparison should not leak timing information. Thorough testing is essential, so continue to expand your test cases with different inputs, parameter sets, and known answer tests (KATs). The current encaps and decaps functions and accompanying test cases are a great starting point, but might need refinement to perfectly match all the details and security considerations of FIPS 203.
 // ML-KEM Encapsulation
-pub fn encaps(comptime pd: params.ParamDetails, pk: PublicKey, allocator: *mem.Allocator) Error!{Ciphertext, [32]u8} {
+pub fn encaps(comptime pd: params.ParamDetails, pk: PublicKey, allocator: *mem.Allocator) Error!kpke.EncapsResult {
     var arena = try std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();

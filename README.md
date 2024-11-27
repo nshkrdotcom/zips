@@ -12,7 +12,7 @@ Zips provides a pure Zig implementation of the Module-Lattice-Based Key-Encapsul
 * Authenticated Encryption: Uses AES-GCM (or other AEAD ciphers from `std.crypto.aead`) for secure encryption/decryption.
 * Memory Safety: Employs Zig's memory safety features and demonstrates best practices for memory management (arena allocation, explicit deallocation).
 * Clear API: Provides a simple and consistent interface for KEM operations and AEAD.
-* Test Vectors: Includes known-answer tests (KATs) for validation.
+* Test Vectors: Includes known-answer tests (KATs) for validation. Currently using [KAT](https://github.com/post-quantum-cryptography/KAT).
 
 ## Example Usage
 
@@ -204,6 +204,13 @@ MIT + Apache 2.0 Dual License
 This implementation is provided for educational and research purposes.  While every effort has been made to ensure correctness and security, this software is not yet formally validated and should not be used in production systems without thorough review and testing by qualified security professionals.  Use at your own risk.
 
 ## WORK IN PROGRESS. TODO:
+
+The reference implementation of Zig Kyber is here:
+https://ziglang.org/documentation/master/std/#src/std/crypto/ml_kem.zig
+
+Zips will aim to remove dependence on the standard library.
+
+Zips is strictly an educational codebase, but aims to be complete, correct, robust, and useful.
 
 Zips shows promise but needs significant work before being considered production-ready.
 

@@ -32,7 +32,11 @@ pub const SharedSecret = [32]u8;
 
 // Key Generation
 pub fn keygen(comptime params: Params, allocator: std.mem.Allocator) Error!KeyPair {
-    return try mlkem.keygen(params.get(), allocator); // Fix parameter type
+    const mlkem_keypair = try mlkem.keygen(params.get(), allocator);
+    return KeyPair{
+        .public_key = mlkem_keypair.public_key,
+        .private_key = mlkem_keypair.private_key,
+    };
 }
 
 // Encapsulation

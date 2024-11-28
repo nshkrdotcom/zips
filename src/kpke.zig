@@ -73,11 +73,12 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
     for (0..pd.k) |i| {
         for (0..pd.k) |j| {
             var seed = [_]u8{0} ** 34;
-			@memcpy(seed[0..32].ptr, &rho); 
+            @memcpy(seed[0..32].ptr, &rho);
             seed[32] = @as(u8, @intCast(j));
             seed[33] = @as(u8, @intCast(i));
             A_hat[i * pd.k + j] = blk: {
-                var result = ntt.RqTq(pd){};
+                var result: ntt.RqTq(pd) = undefined;
+                std.mem.set(result[0..], 0);
                 var counter: u32 = 0;
                 while (true) : (counter += 1) {
                     if (counter == 1000) return Error.RandomnessFailure; // reasonable upper bound per FIPS 203 recommendation.
@@ -145,11 +146,8 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 
     // 7. Create PublicKey and PrivateKey structs
     const pk = PublicKey{ .t = encoded_t, .rho = rho };
-    const sk = PrivateKey{ .s = s };//, .arena = &arena };
-    return KeyPair{ 
-		.publicKey = pk, 
-		.privateKey = sk 
-	};
+    const sk = PrivateKey{ .s = s }; //, .arena = &arena };
+    return KeyPair{ .publicKey = pk, .privateKey = sk };
 }
 
 // K-PKE Encryption
@@ -182,7 +180,8 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
             seed[32] = @as(u8, @intCast(j));
             seed[33] = @as(u8, @intCast(i));
             publicKey_A_hat[i * pd.k + j] = blk: {
-                var result = ntt.RqTq(pd){};
+                var result: ntt.RqTq(pd) = undefined;
+                std.mem.set(result[0..], 0);
                 var counter: u32 = 0;
 
                 while (true) : (counter += 1) {
@@ -303,13 +302,13 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Ciphertext, allocator: *const mem.Allocator, arena: *std.heap.ArenaAllocator) Error![]u8 {
     const u_bytes = ciphertext[0 .. pd.k * pd.n * pd.du / 8];
     const v_bytes = ciphertext[pd.k * pd.n * pd.du / 8 ..];
-	var u = try arena.allocator().alloc(ntt.RqTq(pd), pd.k); 
+    var u = try arena.allocator().alloc(ntt.RqTq(pd), pd.k);
     defer allocator.free(u);
     var v = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.n);
     // Decode u
     for (0..pd.k) |i| {
         for (0..pd.n) |j| {
-            u[i][j] = std.mem.readInt(u16, u_bytes[(i * pd.n + j) * 2 .. (i * pd.n + j + 1) * 2]);
+            u[i][j] = std.mem.readInt(u16, u_bytes[(i * pd.n + j) * 2 .. (i * pd.n + j + 1) * 2], .Little);
         }
     }
 

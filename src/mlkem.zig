@@ -33,7 +33,10 @@ inline fn secureZero(comptime T: type, slice: []volatile T) void {
 // Key Generation
 pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!KeyPair {
     const key_pair = try kpke.keygen(pd, allocator);
-    return try .{ .public_key = key_pair.publicKey, .private_key = key_pair.privateKey };
+    return KeyPair{
+        .public_key = key_pair.publicKey,
+        .private_key = key_pair.privateKey,
+    };
 }
 
 // ML-KEM Encapsulation
@@ -51,15 +54,15 @@ pub fn encaps(comptime pd: params.ParamDetails, pk: PublicKey, allocator: mem.Al
     var K_r: [64]u8 = undefined;
     const hash_input_size = 32 + pk.t.len;
     if (hash_input_size > 50000) return error.InvalidInput;
-	const hash_input = arena_allocator.alloc(u8, hash_input_size) catch |err| {
-		std.debug.print("Allocation failed: {}\n", .{err});  // Or other error handling
-		return Error.AllocationFailure; // Or return the error, etc.
-	};
-	defer arena_allocator.free(hash_input);
+    const hash_input = arena_allocator.alloc(u8, hash_input_size) catch |err| {
+        std.debug.print("Allocation failed: {}\n", .{err}); // Or other error handling
+        return Error.AllocationFailure; // Or return the error, etc.
+    };
+    defer arena_allocator.free(hash_input);
     errdefer secureZero(u8, hash_input);
     @memcpy(hash_input, &m);
     @memcpy(hash_input[32..], pk.t);
-    crypto.hash.sha3.Sha3_512.hash(hash_input, &K_r, .{}); 
+    crypto.hash.sha3.Sha3_512.hash(hash_input, &K_r, .{});
     const K = K_r[0..32].*;
 
     // 3. Encrypt m using K-PKE
@@ -78,7 +81,7 @@ pub fn encaps(comptime pd: params.ParamDetails, pk: PublicKey, allocator: mem.Al
 pub fn decaps(comptime pd: params.ParamDetails, pk: PublicKey, sk: PrivateKey, ct: Ciphertext, allocator: mem.Allocator) Error![32]u8 {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-    const arena_allocator = arena.allocator();  
+    const arena_allocator = arena.allocator();
 
     // 1. Decrypt the ciphertext ct under sk to obtain m'
     const m_prime = try kpke.decrypt(pd, sk, ct, &arena_allocator, &arena);
@@ -99,9 +102,9 @@ pub fn decaps(comptime pd: params.ParamDetails, pk: PublicKey, sk: PrivateKey, c
     errdefer secureZero(u8, hash_input);
     @memcpy(hash_input[0..32], m_prime);
     const publicKey = pk;
-	var hash_output: [32]u8 = undefined;  // Create a separate output array
+    var hash_output: [32]u8 = undefined; // Create a separate output array
     crypto.hash.sha3.Sha3_256.hash(publicKey.t, &hash_output, .{});
-	//@memcpy(hash_input[32..], &hash_output); // Copy to hash_input if necessary
+    //@memcpy(hash_input[32..], &hash_output); // Copy to hash_input if necessary
     crypto.hash.sha3.Sha3_512.hash(hash_input, &K_prime_r_prime, .{}); // Fix: &K_prime_r_prime
     const K_prime = K_prime_r_prime[0..32].*;
 

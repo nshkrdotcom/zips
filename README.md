@@ -338,3 +338,53 @@ Okay, let's conduct a thorough review of the Zips code against the FIPS 203 spec
 3. **Performance Optimization:** Once correctness and security are established, consider performance optimization if needed. Profile the code to identify bottlenecks and explore optimizations where appropriate.
 
 By methodically addressing these items and rigorously testing, we can ensure the Zips library is both functionally correct according to FIPS 203 and resistant to common cryptographic vulnerabilities. The cleanliness and simplicity we've achieved with the memory management revisions are a solid foundation for this crucial security-focused review and revision process.  I'm here to assist with any of these steps.  Just let me know which area you'd like to focus on next.
+
+
+Here's a list of all algorithms from FIPS 203, cross-referenced with their implementations or usage in the Zips codebase, along with notes and any actions needed.
+
+**FIPS 203 Algorithms Cross-Reference (2024-11-28):**
+
+| FIPS 203 Algorithm                | Zips Implementation/Usage                            | Notes/Action Items                                                                                             |
+|------------------------------------|-----------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
+| `ForExample()`                     | Not applicable (example only)                      |                                                                                                                 |
+| `SHAKE128example()`               | Implicitly used by the XOF wrapper                   |  Verify correct usage of the incremental XOF API.                                                            |
+| `BitsToBytes(b)`                   | `utils.zig` (function of the same name)           |                                                                                                                 |
+| `BytesToBits(B)`                   | `utils.zig` (function of the same name)           |                                                                                                                 |
+| `ByteEncode_d(F)`                  | `utils.zig` (part of `bytesToPolynomial` and `polynomialToBytes` )                                                                       | Ensure `ByteEncode_12` handles modulus reduction correctly. |
+| `ByteDecode_d(B)`                  | `utils.zig` (part of `bytesToPolynomial` and `polynomialToBytes`)                                                                       | Ensure `ByteDecode_12` handles modulus reduction correctly. |
+| `SampleNTT(B)`                     | `ntt.zig` (used in `keygen`, internally)                                                                              | Review for constant-time and loop bounds (Appendix B).           |
+| `SamplePolyCBD_eta(B)`            | `cbd.zig` (`samplePolyCBD`)                         | Should accept an allocator argument (already implemented).     |
+| `NTT(f)`                           | `ntt.zig` (`ntt`)                                   | Review for constant-time arithmetic.                                         |
+| `NTT^-1(f_hat)`                    | `ntt.zig` (`nttInverse`)                            | Review for constant-time arithmetic.                                          |
+| `MultiplyNTTs(f_hat, g_hat)`       | Implicit in matrix/vector operations (using `ntt.zig`) | Ensure underlying multiplication is constant-time.                             |
+| `BaseCaseMultiply(a0, a1, b0, b1, gamma)` | Implicit in `MultiplyNTTs` (See below)                |  Ensure constant-time implementation (critical).                    |
+| `K-PKE.KeyGen(d)`                 | `kpke.zig` (`keygen`)                             | Thoroughly review against FIPS pseudocode.                                                                    |
+| `K-PKE.Encrypt(ekPKE, m, r)`      | `kpke.zig` (`encrypt`)                            | Thoroughly review against FIPS pseudocode.                                                                     |
+| `K-PKE.Decrypt(dkPKE, c)`        | `kpke.zig` (`decrypt`)                             | Thoroughly review against FIPS pseudocode.                                                                     |
+| `ML-KEM.KeyGen_internal(d, z)`  | `mlkem.zig` (`keygen` uses this internally)          | Thoroughly review against FIPS pseudocode.                                                                    |
+| `ML-KEM.Encaps_internal(ek, m)` | `mlkem.zig` (`encaps` uses this internally)        | Thoroughly review against FIPS pseudocode.                                                                    |
+| `ML-KEM.Decaps_internal(dk, c)` | `mlkem.zig` (`decaps` uses this internally)          | Thoroughly review against FIPS pseudocode, especially constant-time comparison and implicit rejection.           |
+| `ML-KEM.KeyGen()`                | `kem.zig` (`keygen`)                             |  Relies on internal keygen; no direct implementation needed.                 |
+| `ML-KEM.Encaps(ek)`               | `kem.zig` (`encaps`)                              | Relies on internal encaps; no direct implementation needed.                   |
+| `ML-KEM.Decaps(dk, c)`             | `kem.zig` (`decaps`)                               | Relies on internal decaps; no direct implementation needed.                    |
+
+
+
+**`BaseCaseMultiply` Implementation Note:**
+
+The `BaseCaseMultiply` algorithm isn't directly implemented as a separate function in Zips.  Its logic is implicitly used within the NTT multiplication procedures when multiplying individual polynomial coefficients in the NTT domain.  You *must* ensure this implicit implementation is constant-time, as this is a crucial security consideration.  It might be worth creating a separate, explicit `BaseCaseMultiply` function in `ntt.zig` or `utils.zig` to improve code clarity and ensure constant-time execution.
+
+
+**High-Priority Action Items:**
+
+1. **Review K-PKE and ML-KEM internal functions:**  Carefully compare line by line with the FIPS 203 pseudocode. Any discrepancies in logic, data types, or order of operations must be corrected.
+
+2. **Constant-Time Implementations:**
+   - **`BaseCaseMultiply`:** Make *absolutely* sure the implementation (even if implicit) is constant-time. This is a critical security requirement.
+   - **`Compress` and `Decompress`:** Rewrite these functions in `utils.zig` to ensure they operate in constant time.
+   - **NTT Arithmetic:** Review all arithmetic in `ntt.zig` and ensure it's constant-time to prevent timing leaks.
+
+3. **Input Validation:** Verify that `ML-KEM.Encaps` and `ML-KEM.Decaps` have complete and correct input validation according to Section 7 of FIPS 203.
+
+
+This cross-reference and the highlighted action items provide a clear roadmap for bringing the Zips implementation in line with FIPS 203.  Addressing the high-priority items is crucial for both security and correctness.  Focus on those first, and then proceed with comprehensive testing. I'm here to assist you with any of these tasks. Just let me know what you'd like to work on next.

@@ -108,7 +108,7 @@ pub fn compress(comptime pd: params.ParamDetails, x: u16, d: u8) u16 {
     }
     const shift_amount: u5 = @intCast(d);
     const two_to_d = @as(u32, 1) << shift_amount; // Constant-time power of 2
-    
+
     // Constant-time division (using precomputed inverse if available)
     const q_inverse = precomputeInverse(pd.q);
     var result = constantTimeMul(x_u32 * two_to_d, q_inverse, pd.q);

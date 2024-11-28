@@ -84,7 +84,7 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
                 var counter: u32 = 0;
                 while (true) : (counter += 1) {
                     if (counter == 1000) return Error.RandomnessFailure; // reasonable upper bound per FIPS 203 recommendation.
-                    try crypto.random(std.mem.asBytes(&result));
+                    try crypto.random.bytes(std.mem.asBytes(&result));
                     var valid = true;
                     for (result) |coeff| {
                         if (coeff >= pd.q) {
@@ -190,7 +190,7 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 
                 while (true) : (counter += 1) {
                     if (counter == 1000) return Error.RandomnessFailure; // reasonable upper bound per FIPS 203 recommendation.
-                    try crypto.random(std.mem.asBytes(&result));
+                    try crypto.random.bytes(std.mem.asBytes(&result));
                     var valid = true;
                     for (result) |coeff| {
                         if (coeff >= pd.q) {

@@ -40,9 +40,12 @@ pub fn ntt(comptime pd: params.ParamDetails, f: *RqTq(pd), zetas: []const u16) v
             i += 1;
             var j: u32 = start;
             while (j < start + len) : (j += 1) {
-                const t = @as(u16, @mod(@as(u32, zeta) * @as(u32, f_hat[j + len]), pd.q));
-                f_hat[j + len] = @as(u16, @mod(@as(i32, f_hat[j]) - @as(i32, t) + pd.q, pd.q));
-                f_hat[j] = @as(u16, @mod(@as(u32, f_hat[j]) + @as(u32, t), pd.q));
+				const t_a: u16 = @intCast(@mod(@as(u32, zeta) * @as(u32, f_hat[j + len]), pd.q));
+                const t = @as(u16, t_a);
+				const j_a: u16 = @intCast(@mod(@as(i32, f_hat[j]) - @as(i32, t) + pd.q, pd.q));
+                f_hat[j + len] = @as(u16, j_a);
+				const j_b: u16 = @intCast(@mod(@as(u32, f_hat[j]) + @as(u32, t), pd.q));
+                f_hat[j] = @as(u16, j_b);
             }
         }
     }

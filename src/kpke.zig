@@ -13,11 +13,13 @@ const Error = @import("error.zig").Error;
 pub const PublicKey = struct {
     t: []u8,
     rho: [32]u8,
+	allocator: mem.Allocator, // The allocator used (important for freeing)
 	zetas: []u16,
 };
 
 pub const PrivateKey = struct {
-    s: []u16,
+    s: []const []const u16, // A slice of k polynomial slices (each of length 256 when NTT'd)
+    allocator: mem.Allocator, // The allocator used (important for freeing)
 	zetas: []u16,
 };
 
@@ -35,12 +37,10 @@ const KeyPair = struct {
     privateKey: PrivateKey,
 };
 
-// Compress function (assumed to be implemented elsewhere)
 fn compress(comptime pd: params.ParamDetails, value: u16, bits: u8) u16 {
-    // Placeholder implementation - replace with actual compression logic
-    _ = pd;
-    _ = bits;
-    return value;
+    const numerator = @as(u32, @intCast(1 << bits)); //2^bits; use shifts as multiply by power of 2
+    const result = @as(u16, @intCast((numerator * value) / pd.q)); // Integer division, rounds down
+    return result;
 }
 
 pub fn allocOrError(allocator: mem.Allocator, comptime T: type, size: usize) Error![]T {
@@ -97,7 +97,8 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
     }
 
     // 4. Generate secret key s (using CBD)
-	var s = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);	
+	//var s = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
+	var s = try arena_allocator.alloc([]u16, pd.k);  // Allocate a slice to hold *k* polynomial
 	for (0..pd.k) |i| {
 		s[i] = try cbd.samplePolyCBD(pd, arena_allocator);
 	}
@@ -164,8 +165,8 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 	arena_allocator.free(t);
 	
     // 7. Create PublicKey and PrivateKey structs
-    const pk = PublicKey{ .t = encoded_t, .rho = rho, .zetas = zetas};
-    const sk = PrivateKey{ .s = s, .zetas = zetas};
+    const pk = PublicKey{ .t = encoded_t, .rho = rho, .allocator = arena_allocator, .zetas = zetas};
+    const sk = PrivateKey{ .s = s, .allocator = arena_allocator, .zetas = zetas};
     return KeyPair{ .publicKey = pk, .privateKey = sk };
 }
 
@@ -390,14 +391,24 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Cip
 pub fn destroyPrivateKey(sk: *PrivateKey) void {
     // ... securely zero out and deallocate private key data
     // Securely zero out the private key polynomial
-    secureZero(u16, sk.s);
+    // secureZero(u16, sk.s);
     //sk.arena.deinit(); // Free all memory allocated by the arena, including sk.s
     // Zero out other sensitive data if needed
+    for (sk.s) |poly| { // Iterate over the *k* polynomials
+        sk.allocator.free(poly); // Free the memory for each polynomial
+    }
+    sk.allocator.free(sk.s); // Free the outer slice
 }
 
 pub fn destroyPublicKey(pk: *PublicKey) void {
-    secureZero(u8, pk.t); // Zero out the sensitive polynomial t
+    // secureZero(u8, pk.t); // Zero out the sensitive polynomial t
     //pk.arena.deinit();  // Free the memory occupied by t (and the arena itself)
+    for (pk.t) |poly| { // Iterate over the *k* polynomials
+        pk.allocator.free(poly); // Free the memory for each polynomial
+    }
+    pk.allocator.free(pk.t); // Free the outer slice	
+	pk.allocator.free(pk.rho); // Free the memory for each polynomial
+	
 }
 
 const expectError = std.testing.expectError;

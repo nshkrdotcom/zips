@@ -1,9 +1,8 @@
 //kpke.zig
 const std = @import("std");
-const mem = std.mem;
-const crypto = std.crypto;
+const crypto = std.crypto; // Keep for crypto functions
 const params = @import("params.zig");
-const rng = @import("rng.zig");
+const rng = @import("rng.zig"); 
 const utils = @import("utils.zig");
 const ntt = @import("ntt.zig");
 const cbd = @import("cbd.zig");

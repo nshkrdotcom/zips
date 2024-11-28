@@ -1,8 +1,7 @@
 //utils.zig
 const std = @import("std");
 const params = @import("params.zig");
-const rng = @import("rng.zig");
-const mlkem = @import("mlkem.zig");
+const rng = @import("rng.zig"); // Only needed for precomputeInverse.  Remove if precomputeInverse is not needed or moved elsewhere.
 const Error = @import("error.zig").Error;
 
 ub fn bytesToPolynomial(comptime pd: params.ParamDetails, bytes: []const u8, allocator: std.mem.Allocator) Error![]u16 {

@@ -1,11 +1,8 @@
 //cbd.zig
 const std = @import("std");
-const crypto = std.crypto;
-const mem = std.mem;
 const params = @import("params.zig");
 const rng = @import("rng.zig");
-const utils = @import("utils.zig");
-const Error = @import("error.zig").Error;
+const Error = @import("error.zig").Error; 
 
 pub fn samplePolyCBD(pd: params.ParamDetails, allocator: std.mem.Allocator) Error![]u16 {
     const bytes = try allocator.alloc(u8, pd.eta1 * pd.n * 2);

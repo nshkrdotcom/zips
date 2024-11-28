@@ -75,7 +75,7 @@ pub fn main() !void {
 
 ```mermaid
 graph LR
-    subgraph TV["Test Vectors"]
+    subgraph TV["Test Vectors"]
         kat_vectors_512
         kat_vectors_768
         kat_vectors_1024
@@ -110,29 +110,29 @@ graph LR
     kem --> mlkem
     kem --> params
     mlkem --> kpke
-    mlkem --> ntt
-    mlkem --> params
+    mlkem --> params  
     kpke --> ntt
     kpke --> cbd
     kpke --> utils
     kpke --> params
-    kpke --> random
+    kpke --> rng
+    kpke --> hash
     cbd --> rng
     cbd --> params
     mlkem --> rng
     kem --> aead
     kem --> random
-    kem --> params
-    kpke --> hash
-    cbd --> random
-    rng --> random
     kem --> error
     mlkem --> error
     kpke --> error
     cbd --> error
     utils --> params
+    utils --> rng  
+    utils --> error
     ntt --> params
     ntt --> utils
+    rng --> random
+    rng --> error
 
 
     example["Interface"] --> kem
@@ -142,17 +142,20 @@ graph LR
     ntt_test --> params
     cbd_test --> cbd
     cbd_test --> params
+    cbd_test --> std.testing
+    cbd_test --> std.heap
     utils_test --> params
     utils_test --> utils
-    utils_test --> mlkem
-    utils_test --> rng
+    utils_test --> error
+    utils_test --> std.testing
     mlkem_test --> mlkem
-    mlkem_test --> kem
-    mlkem_test --> utils
-    mlkem_test --> params
+    mlkem_test --> std.heap
+    mlkem_test --> std.testing
+    mlkem_test --> error
     kpke_test --> kpke
-    kpke_test --> utils
-    kpke_test --> params
+    kpke_test --> std.testing
+    kpke_test --> std.heap
+    kpke_test --> error
     Tests --> std.testing
     Tests --> SC
     Tests --> error
@@ -163,6 +166,14 @@ graph LR
     kat_vectors_768 --> kpke_test
     kat_vectors_1024 --> mlkem_test
     kat_vectors_1024 --> kpke_test
+
+    style example fill:#010101,stroke:#00527C,stroke-width:2px,color:#f0f0f0
+    style Tests fill:#fafafa,stroke:#5C258D,stroke-width:1px,color:#f0f0f0
+    style Core fill:#fafafa,stroke:#5C258D,stroke-width:1px, color:#f0f0f0
+    style SC fill:#fafafa,stroke:#00527C,stroke-width:1px,color:#f0f0f0
+    style TV fill:#fafafa,stroke:#00527c,stroke-width:1px,color:#f0f0f0
+
+    linkStyle default stroke-width:2px,stroke:#030303
 ```
 
 ## Building

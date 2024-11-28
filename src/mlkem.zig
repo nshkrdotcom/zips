@@ -5,9 +5,7 @@ const params = @import("params.zig");
 const rng = @import("rng.zig");
 const utils = @import("utils.zig");
 const kpke = @import("kpke.zig");
-const ntt = @import("ntt.zig");
 const Error = @import("error.zig").Error;
-const mem = std.mem;
 
 // Define ML-KEM key and ciphertext types
 pub const PublicKey = kpke.PublicKey;

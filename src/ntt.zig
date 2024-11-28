@@ -1,10 +1,7 @@
 //ntt.zig
 const std = @import("std");
-const mem = std.mem; // Add this line
-const crypto = std.crypto;
 const params = @import("params.zig");
 const utils = @import("utils.zig");
-const Error = @import("error.zig").Error;
 
 // Define the type for elements in Rq and Tq (using ParamDetails)
 pub fn RqTq(comptime pd: params.ParamDetails) type {

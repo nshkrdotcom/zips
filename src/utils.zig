@@ -154,7 +154,7 @@ pub fn decodePrivateKey(comptime pd: params.ParamDetails, sk_bytes: []const u8, 
     sk.arena = &arena;
     for (0..pd.k) |i| {
         for (0..pd.n) |j| {
-            sk.s[i * pd.n + j] = std.mem.readInt(u16, sk_bytes[(i * pd.n + j) * 2 .. (i * pd.n + j + 1) * 2]);
+            sk.s[i * pd.n + j] = std.mem.readInt(u16, sk_bytes[(i * pd.n + j) * 2 .. (i * pd.n + j + 1) * 2], .Little);
         }
     }
     return sk;

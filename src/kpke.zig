@@ -13,14 +13,12 @@ const Error = @import("error.zig").Error;
 pub const PublicKey = struct {
     t: []u8,
     rho: [32]u8,
-    pub fn init(t: []u8, rho: [32]u8) PublicKey {
-        return .{ .t = t, .rho = rho };
-    }
+	zetas: []u16,
 };
 
 pub const PrivateKey = struct {
     s: []u16,
-    //arena: *std.heap.ArenaAllocator,
+	zetas: []u16,
 };
 
 pub const Ciphertext = []u8; // Ciphertext will be a byte array
@@ -99,27 +97,36 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
     }
 
     // 4. Generate secret key s (using CBD)
-    var s = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
+	//var s: [pd.k][pd.n]u16 = undefined;
+	var s = try arena_allocator.alloc([]u16, pd.k);
     for (0..pd.k) |i| {
         s[i] = try cbd.samplePolyCBD(pd, arena_allocator);
     }
+	// Free s
 
     // 5. Generate error vector e (using CBD)
-    var e = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
-
+    //var e: [pd.k][pd.n]u16 = undefined;
+	var e = try arena_allocator.alloc([]u16, pd.k);
     for (0..pd.k) |i| {
         e[i] = try cbd.samplePolyCBD(pd, arena_allocator);
     }
 
+	// In keygen, precompute zetas
+	const zetas = try ntt.precomputeZetas(pd, arena_allocator);
+	defer allocator.free(zetas);
+
     // 6. Compute t = As + e
-    var t = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
-    var s_hat = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
+    var t = try arena_allocator.alloc([]u16, pd.k);
+    var s_hat = try arena_allocator.alloc([]u16, pd.k);
     for (0..pd.k) |i| {
-        ntt.ntt(pd, &s[i]); // calculate ntt of s once instead of repeatedly
+        ntt.ntt(pd, &s[i], zetas); // calculate ntt of s once instead of repeatedly
         std.mem.copy(ntt.RqTq(pd), &s_hat[i], &s[i]);
+		arena_allocator.free(s[i]);
     }
+	arena_allocator.free(s);
+	
     // Initialize t to zeroes
-    @memset(t, ntt.RqTq(pd){});
+	std.mem.zeroes(t);
 
     for (0..pd.k) |i| {
         for (0..pd.k) |j| {
@@ -134,10 +141,17 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
         for (0..pd.n) |z| {
             t[i][z] = @as(u16, @mod(@as(u32, t[i][z]) + @as(u32, e[i][z]), pd.q));
         }
-    }
+    }	
+	for (0..pd.k) |i| {
+		arena_allocator.free(e[i]);
+		arena_allocator.free(s_hat[i]);
+	}
+	arena_allocator.free(s_hat);
+	arena_allocator.free(e);
+
     var encoded_t = try arena_allocator.alloc(u8, pd.publicKeyBytes - 32);
     for (0..pd.k) |i| {
-        ntt.nttInverse(pd, &t[i]);
+        ntt.nttInverse(pd, &t[i], zetas);
         var current_index: usize = i * pd.n * 2;
         for (0..pd.n) |j| {
             const compressed_t = compress(pd, t[i][j], pd.du);
@@ -146,9 +160,14 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
         }
     }
 
+	for (0..pd.k) |i| {
+		arena_allocator.free(t[i]);
+	}
+	arena_allocator.free(t);
+	
     // 7. Create PublicKey and PrivateKey structs
-    const pk = PublicKey{ .t = encoded_t, .rho = rho };
-    const sk = PrivateKey{ .s = s }; //, .arena = &arena };
+    const pk = PublicKey{ .t = encoded_t, .rho = rho, .zetas = zetas};
+    const sk = PrivateKey{ .s = s, .zetas = zetas};
     return KeyPair{ .publicKey = pk, .privateKey = sk };
 }
 
@@ -209,12 +228,14 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     defer allocator.free(u_hat);
 
     // Initialize u_hat to zeroes (important!)
-    std.mem.zeroes(u_hat);
+	//std.mem.zeroes(u_hat);
 
     const y_hat = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(y_hat);
-
-    for (0..pd.k) |i| ntt.ntt(pd, &y[i]);
+	
+	const zetas = pk.zetas;
+	
+    for (0..pd.k) |i| ntt.ntt(pd, &y[i], zetas);
 
     std.mem.copy(ntt.RqTq(pd), y_hat, y);
 
@@ -235,7 +256,7 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     var u = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(u);
     for (0..pd.k) |i| {
-        ntt.nttInverse(pd, &u_hat[i]);
+        ntt.nttInverse(pd, &u_hat[i], zetas);
         std.mem.copy(u8, std.mem.asBytes(&u[i]), std.mem.asBytes(&u_hat[i]));
     }
     // Compute v
@@ -274,7 +295,7 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 
     //var v = ntt.RqTq(pd){};
     var v = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.n);
-    ntt.nttInverse(pd, &v_hat);
+    ntt.nttInverse(pd, &v_hat, zetas);
     std.mem.copy(u8, std.mem.asBytes(&v), std.mem.asBytes(&v_hat));
 
     // Compress and encode u and v
@@ -312,26 +333,30 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Cip
     // Decode u
     for (0..pd.k) |i| {
         for (0..pd.n) |j| {
-            u[i][j] = std.mem.readInt(u16, u_bytes[(i * pd.n + j) * 2 .. (i * pd.n + j + 1) * 2], .Little);
+			const start_index = (i * pd.n + j) * 2;
+			u[i][j] = mem.readInt(u16, &u_bytes[start_index..start_index+2], .Little);
         }
     }
 
     // Decode v
     for (0..pd.n) |j| {
-        v[j] = std.mem.readInt(u16, v_bytes[j * 2 .. (j + 1) * 2]);
+		const start_index = j * 2;
+        v[j] = mem.readInt(u16, &v_bytes[start_index..start_index+2], .Little);
     }
+
+	const zetas = sk.zetas;
 
     // 2. Compute s^T * u
     var s_hat = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(s_hat);
     for (0..pd.k) |i| {
         std.mem.copy(ntt.RqTq(pd), &s_hat[i], &sk.s[i]);
-        ntt.ntt(pd, &s_hat[i]);
+        ntt.ntt(pd, &s_hat[i], zetas);
     }
     var u_hat = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(u_hat);
     for (0..pd.k) |i| {
-        ntt.ntt(pd, &u[i]);
+        ntt.ntt(pd, &u[i], zetas);
         std.mem.copy(ntt.RqTq(pd), &u_hat[i], &u[i]);
     }
     var w_hat = ntt.RqTq(pd){};
@@ -345,7 +370,7 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Cip
         }
     }
     var w = ntt.RqTq(pd){};
-    ntt.nttInverse(pd, &w_hat);
+    ntt.nttInverse(pd, &w_hat, zetas);
     std.mem.copy(u16, &w, &w_hat);
     for (0..pd.n) |i| {
         w[i] = @as(u16, @intCast(@mod(@as(i32, v[i]) - @as(i32, w[i]) + pd.q, pd.q)));

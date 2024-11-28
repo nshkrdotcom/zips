@@ -18,10 +18,10 @@ pub fn allocOrError(allocator: std.mem.Allocator, comptime T: type, size: usize)
 }
 
 // Pre-compute zetas (This should be done only ONCE per parameter set)
-fn precomputeZetas(comptime pd: params.ParamDetails, allocator: std.mem.Allocator) ![]u16 {
+pub fn precomputeZetas(comptime pd: params.ParamDetails, allocator: std.mem.Allocator) ![]u16 {
     const zetas = try allocator.alloc(u16, pd.n / 2);
     for (zetas, 0..) |*zeta, i| {
-        zeta.* = utils.computeZeta(@as(u8, @intCast(i + 1)));
+        zeta.* = utils.computeZeta(@as(u8, @intCast(i + 1)), 1);  // TODO: check param 2
     }
     return zetas;
 }

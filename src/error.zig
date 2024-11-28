@@ -13,13 +13,13 @@ pub const Error = error{
     RandomnessFailure,
     AllocationFailure,
     InvalidInput,
-	OutOfMemory,
+    OutOfMemory,
 };
 
 // Optional custom error type if needed
 pub const CustomError = struct {
     errorCode: u32,
-    
+
     pub fn format(
         self: @This(),
         comptime fmt: []const u8,
@@ -28,7 +28,7 @@ pub const CustomError = struct {
     ) !void {
         _ = fmt;
         _ = options;
-        try writer.print("Error Code: {}, Error Name: CustomError", .{ self.errorCode });
+        try writer.print("Error Code: {}, Error Name: CustomError", .{self.errorCode});
     }
 };
 
@@ -51,6 +51,6 @@ test "panic on error test" {
             panicOnError(expected_error, "Failed to generate keypair");
         }
     }.call;
-    
+
     try std.testing.expectError(expected_error, test_fn());
 }

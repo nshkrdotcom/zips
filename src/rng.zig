@@ -33,5 +33,5 @@ test "generate random bytes fills buffer" {
             break;
         }
     }
-    std.testing.expect(!allZeroes); 
+    std.testing.expect(!allZeroes);
 }

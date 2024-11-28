@@ -9,9 +9,9 @@ const Error = @import("error.zig").Error;
 const mem = std.mem;
 
 // Define ML-KEM key and ciphertext types
-pub const PublicKey = kpke.PublicKey;    // Reuse kpke's PublicKey
+pub const PublicKey = kpke.PublicKey; // Reuse kpke's PublicKey
 pub const PrivateKey = kpke.PrivateKey; // Reuse kpke's PrivateKey
-pub const Ciphertext = []u8;           // Ciphertext will be a byte array
+pub const Ciphertext = []u8; // Ciphertext will be a byte array
 
 const KeyPair = struct {
     public_key: PublicKey,
@@ -20,27 +20,27 @@ const KeyPair = struct {
 
 const EncapsResult = struct {
     ciphertext: Ciphertext,
-    shared_secret: [32]u8,  // Use a fixed-size byte array instead of the undefined SharedSecret
+    shared_secret: [32]u8, // Use a fixed-size byte array instead of the undefined SharedSecret
 };
 
 inline fn secureZero(comptime T: type, slice: []volatile T) void {
     for (slice) |*elem| {
         elem.* = 0;
-        asm volatile ("" : : : "memory"); // Prevent optimizations
+        asm volatile ("" ::: "memory"); // Prevent optimizations
     }
 }
 
 // Key Generation
 pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!KeyPair {
-	const key_pair = try kpke.keygen(pd, allocator);
-	return .{ .public_key = key_pair[0], .private_key = key_pair[1] };
-	//return .{ .public_key = key_pair.publicKey, .private_key = key_pair.privateKey };
+    const key_pair = try kpke.keygen(pd, allocator);
+    return .{ .public_key = key_pair[0], .private_key = key_pair[1] };
+    //return .{ .public_key = key_pair.publicKey, .private_key = key_pair.privateKey };
 }
 
 // ML-KEM Encapsulation
 pub fn encaps(comptime pd: params.ParamDetails, pk: PublicKey, allocator: mem.Allocator) Error!EncapsResult {
-	var arena = std.heap.ArenaAllocator.init(allocator) catch return Error.AllocationFailure;
-	errdefer arena.deinit();
+    var arena = std.heap.ArenaAllocator.init(allocator) catch return Error.AllocationFailure;
+    errdefer arena.deinit();
     const arena_allocator = arena.allocator();
 
     // 1. Generate random bytes m
@@ -51,17 +51,17 @@ pub fn encaps(comptime pd: params.ParamDetails, pk: PublicKey, allocator: mem.Al
     // 2. Compute K and r (using SHAKE256 as specified in FIPS 203)
     var K_r: [64]u8 = undefined;
     const hash_input_size = 32 + pk.t.len;
-    if(hash_input_size > 50000) return error.InvalidInput; // prevent massive stack allocations.
+    if (hash_input_size > 50000) return error.InvalidInput; // prevent massive stack allocations.
     var hash_input = try arena_allocator.alloc(u8, hash_input_size);
     defer arena_allocator.free(hash_input);
     errdefer secureZero(u8, hash_input);
     std.mem.copy(u8, hash_input, &m);
-	//std.mem.copy(u8, hash_input[0..m_prime.len], m_prime); // m_prime is already a slice
+    //std.mem.copy(u8, hash_input[0..m_prime.len], m_prime); // m_prime is already a slice
     std.mem.copy(u8, hash_input[32..], pk.t);
     crypto.hash.sha3.Sha3_512.hash(hash_input, K_r, .{}) catch return Error.RandomnessFailure;
     const K = K_r[0..32].*;
     _ = K_r[32..]; // Explicitly mark r as unused to suppress unused variable warning
-    
+
     // 3. Encrypt m using K-PKE
     const c = try kpke.encrypt(pd, pk, m, arena_allocator);
     defer arena_allocator.free(c);
@@ -86,11 +86,11 @@ pub fn decaps(comptime pd: params.ParamDetails, sk: PrivateKey, ct: Ciphertext, 
         secureZero(u8, m_prime);
         arena_allocator.free(m_prime);
     }
-    
+
     // 2. Compute K' from m'
     var K_prime_r_prime: [64]u8 = undefined;
     const hash_input_size = 32 + sk.s.len * @sizeOf(u16);
-    if(hash_input_size > 50000) return error.InvalidInput; // prevent massive stack allocations.
+    if (hash_input_size > 50000) return error.InvalidInput; // prevent massive stack allocations.
     var hash_input = try arena_allocator.alloc(u8, hash_input_size);
     defer arena_allocator.free(hash_input);
     errdefer secureZero(u8, hash_input);

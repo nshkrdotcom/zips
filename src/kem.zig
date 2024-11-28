@@ -27,17 +27,17 @@ pub fn getParams(param_set: Params) paramsModule.ParamDetails {
 // Key Types
 pub const PublicKey = mlkem.PublicKey;
 pub const PrivateKey = mlkem.PrivateKey;
-pub const Ciphertext = []u8;  // Ciphertext is a byte slice
+pub const Ciphertext = []u8; // Ciphertext is a byte slice
 pub const SharedSecret = [32]u8;
 
 // Key Generation
 pub fn keygen(comptime params: Params, allocator: *std.mem.Allocator) Error!KeyPair {
-    return try mlkem.keygen(params.get(), allocator);  // Fix parameter type
+    return try mlkem.keygen(params.get(), allocator); // Fix parameter type
 }
 
 // Encapsulation
 pub fn encaps(comptime params: Params, pk: PublicKey, allocator: *std.mem.Allocator) Error!EncapsResult {
-    return try mlkem.encaps(params, pk, allocator); 
+    return try mlkem.encaps(params, pk, allocator);
 }
 
 // Decapsulation
@@ -69,14 +69,7 @@ pub fn aeadEncrypt(
     var ciphertext = try allocator.alloc(u8, plaintext.len + 16); // Allocate for tag
     var tag: [16]u8 = undefined;
     const gcm = std.crypto.aead.aes_gcm.Aes256Gcm;
-    gcm.encrypt(
-        ciphertext[0..plaintext.len], 
-        &tag, 
-        plaintext, 
-        additional_data orelse &[_]u8{}, 
-        nonce, 
-        key
-    );
+    gcm.encrypt(ciphertext[0..plaintext.len], &tag, plaintext, additional_data orelse &[_]u8{}, nonce, key);
     // Append tag to ciphertext
     @memcpy(ciphertext[plaintext.len..], &tag);
     return ciphertext;
@@ -109,17 +102,10 @@ pub fn aeadDecrypt(
     var plaintext = try allocator.alloc(u8, plaintext_len);
     errdefer allocator.free(plaintext);
     const tag = ciphertext[plaintext_len..]; // Extract tag
-	
+
     const gcm = std.crypto.aead.aes_gcm.Aes256Gcm;
-    gcm.decrypt(
-		plaintext[0..ciphertext.len], 
-		ciphertext, 
-		tag, 
-		additional_data orelse &[_]u8{}, 
-		nonce, 
-		key
-	);
-	//) catch |err| {
+    gcm.decrypt(plaintext[0..ciphertext.len], ciphertext, tag, additional_data orelse &[_]u8{}, nonce, key);
+    //) catch |err| {
     //    switch(err) {
     //        error.AuthenticationFailed => {
     //            allocator.free(plaintext); // Free plaintext on auth failure before returning to prevent leak
@@ -135,14 +121,10 @@ pub fn aeadDecrypt(
 pub fn generateRandomBytes(buffer: []u8) !void {
     std.crypto.random(buffer);
 }
- 
- 
- 
+
 // --- Optional additions for a more complete interface: ---
 // Key Derivation Function (KDF) - If needed (std.crypto.kdf might suffice)
 // ...
-
- 
 
 // TODO:
 //https://github.com/post-quantum-cryptography/KAT/*
@@ -154,28 +136,25 @@ pub fn generateRandomBytes(buffer: []u8) !void {
 //Known Answer Tests (KATs): The most important tests are the KATs. Obtain the official NIST KATs for FIPS 203 and create test cases that verify your mlkem.keygen, mlkem.encaps, and mlkem.decaps functions against those test vectors. This is essential for validating compliance with the standard.
 
 //Create a test_vectors.zig module to store these test vectors. Write comprehensive test functions in mlkem_test.zig, kpke_test.zig and potentially other modules to verify your implementation against these KATs. Ensure that you test all parameter sets (512, 768, 1024). If your implementation doesn't pass the KATs, carefully review the FIPS 203 specification and debug your code until it matches the expected output. This is the most critical step in validating your implementation. Example of a KAT test in mlkem_test.zig:
- 
+
 // Example test function (you'll need to implement or remove/modify as needed)
 //test "ML-KEM KAT - KEM-768" {
 //    const pd = Params.kem768.get();
 //    const kat = test_vectors.kem768_kats[0]; // Example: Accessing the first KAT from test_vectors.zig
 
-    // Note: You'll need to implement or import these decode functions
-    // var pk = try decodePublicKey(pd, kat.pk);
-    // var sk = try decodePrivateKey(pd, kat.sk);
-    // var ct = try decodeCiphertext(pd, kat.ct);
-    // const ss = try mlkem.decaps(pd, sk, ct, allocator);
-    // try std.testing.expectEqualSlices(u8, kat.ss, &ss);
+// Note: You'll need to implement or import these decode functions
+// var pk = try decodePublicKey(pd, kat.pk);
+// var sk = try decodePrivateKey(pd, kat.sk);
+// var ct = try decodeCiphertext(pd, kat.ct);
+// const ss = try mlkem.decaps(pd, sk, ct, allocator);
+// try std.testing.expectEqualSlices(u8, kat.ss, &ss);
 //}
- 
- 
- 
+
 //Edge Cases and Invalid Inputs: Test your library with invalid inputs (e.g., incorrect ciphertext length, corrupted public key) to ensure it handles errors correctly and doesn't crash or exhibit undefined behavior.
 
 //Edge Cases: Test with edge cases and invalid inputs (e.g., incorrect ciphertext lengths, invalid public keys) to ensure robust error handling.
 
 //Fuzz Testing: Use a fuzzing tool like libFuzzer if possible.
-
 
 //Parameter Sets: Test with all three parameter sets (ML-KEM-512, ML-KEM-768, ML-KEM-1024) to confirm that your implementation works correctly across all configurations.
 
@@ -189,7 +168,7 @@ pub fn generateRandomBytes(buffer: []u8) !void {
 
 // Benchmark example
 test "benchmark mlkem keygen" {
-	const pd = Params.kem768; // Fix parameter type
+    const pd = Params.kem768; // Fix parameter type
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -206,7 +185,6 @@ test "benchmark mlkem keygen" {
     const elapsed = timer.read();
     std.debug.print("Average keygen time: {}ns\n", .{elapsed / 1000});
 }
-
 
 //Benchmarking: Create benchmarks to measure the performance of keygen, encaps, and decaps for all parameter sets. This data is essential for evaluating the efficiency of your implementation and identifying potential bottlenecks.
 

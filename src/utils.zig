@@ -93,7 +93,7 @@ pub fn constantTimeMul(a: u32, b: u32, comptime modulus: u32) u32 {
     for (0..32) |_| {
         const multiply = @intFromBool((@as(u32, 1) & temp_b) != 0);
         result = @mod(result + multiply * temp_a, modulus); // Modular addition
-        temp_a = @mod(temp_a << @as(u5, 1), modulus);      // Modular shift		
+        temp_a = @mod(temp_a << @as(u5, 1), modulus); // Modular shift
         temp_b >>= @as(u5, 1);
     }
     return result;
@@ -127,9 +127,9 @@ fn constantTimeMod(x: u32, comptime modulus: u32) u32 {
 
 // Updated decoding functions to use mlkem instead of kem
 pub fn decodePublicKey(_: params.ParamDetails, pk_bytes: []const u8, allocator: *std.mem.Allocator) !mlkem.PublicKey {
-    const t = pk_bytes[0..pk_bytes.len - 32];
-    const rho_src = pk_bytes[pk_bytes.len - 32..]; // Source rho
-	var arena = try std.heap.ArenaAllocator.init(allocator);
+    const t = pk_bytes[0 .. pk_bytes.len - 32];
+    const rho_src = pk_bytes[pk_bytes.len - 32 ..]; // Source rho
+    var arena = try std.heap.ArenaAllocator.init(allocator);
     errdefer arena.deinit(); // Defer arena deallocation
     const publicKey_t = try arena.allocator().alloc(u8, t.len);
     errdefer arena.allocator().free(publicKey_t);
@@ -185,7 +185,7 @@ test "bytesToPolynomial errors on incorrect input length" {
 
 test "polynomialToBytes errors on incorrect input length" {
     const pd = params.Params.kem768.get(); // Example parameter set
-    var polynomial = [_]u16{0} ** (pd.n-1);
+    var polynomial = [_]u16{0} ** (pd.n - 1);
     try expectError(Error.InvalidInput, polynomialToBytes(pd, &polynomial));
 }
 
@@ -204,10 +204,10 @@ test "computeNInverse is correct for kem768" {
 test "precomputeInverse is correct" {
     // Test with known inverses (for small values)
     try expectEqual(@as(u32, 1), precomputeInverse(3329));
-    try expectEqual(@as(u32, 1), constantTimeMul(3329, precomputeInverse(3329),3329));
-    try expectEqual(@as(u32, 1), constantTimeMul(1, precomputeInverse(3329),3329));
-    try expectEqual(@as(u32, 0), constantTimeMul(0, precomputeInverse(3329),3329));
-    try expectEqual(@as(u32, 1), constantTimeMul(10, precomputeInverse(3329) * 10,3329));
+    try expectEqual(@as(u32, 1), constantTimeMul(3329, precomputeInverse(3329), 3329));
+    try expectEqual(@as(u32, 1), constantTimeMul(1, precomputeInverse(3329), 3329));
+    try expectEqual(@as(u32, 0), constantTimeMul(0, precomputeInverse(3329), 3329));
+    try expectEqual(@as(u32, 1), constantTimeMul(10, precomputeInverse(3329) * 10, 3329));
 }
 
 test "utils functions" {

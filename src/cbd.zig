@@ -17,18 +17,18 @@ pub fn samplePolyCBD(comptime pd: params.ParamDetails, allocator: *mem.Allocator
     while (i < pd.n) : (i += 1) {
         const x = sumBits(bytes[i * pd.eta1 .. i * pd.eta1 + pd.eta1]);
         const y = sumBits(bytes[pd.n * pd.eta1 + i * pd.eta1 .. pd.n * pd.eta1 + i * pd.eta1 + pd.eta1]);
-		//polynomial[i] = @intCast(u16, @mod((@as(i32, x) - @as(i32, y) + pd.q, pd.q)));
+        //polynomial[i] = @intCast(u16, @mod((@as(i32, x) - @as(i32, y) + pd.q, pd.q)));
         polynomial[i] = @rem(@as(u16, x) -% @as(u16, y) +% pd.q, pd.q); // No i32 casts needed
     }
     return polynomial;
 }
 
 fn sumBits(bits: []const u8) u16 {
-	var sum: u16 = 0;
-	for (bits) |bit| {
-		sum += bit;
-	}
-	return sum;
+    var sum: u16 = 0;
+    for (bits) |bit| {
+        sum += bit;
+    }
+    return sum;
 }
 
 const expectEqual = std.testing.expectEqual;
@@ -54,5 +54,4 @@ test "samplePolyCBD generates different polynomials" {
     const p2 = try samplePolyCBD(pd, gpa.allocator());
     defer gpa.allocator().free(p2);
     try std.testing.expect(!std.mem.eql(u16, &p1, &p2));
-
 }

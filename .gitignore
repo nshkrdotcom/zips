@@ -22,3 +22,5 @@ zig-out/
 zig-cache/
 
 vectors/
+
+.todo

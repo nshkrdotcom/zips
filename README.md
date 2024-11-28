@@ -233,6 +233,14 @@ Zips shows promise but needs significant work before being considered production
 
 1. **Known Answer Tests (KATs):**  The provided code mentions KATs but doesn't implement them. This is *critical*.  Obtain the official NIST KATs for ML-KEM (FIPS 203) and create thorough test cases in `mlkem_test.zig` to validate against these vectors for *all* parameter sets (512, 768, 1024).  If KATs fail, the implementation is incorrect and must be fixed before proceeding. The provided `test_vectors.zig` file seems intended for this purpose, but it's empty.  Populate it with the NIST KATs.  Include tests for `keygen` and `encaps` as well.  Decoding functions for the KAT data (like `decodePublicKey`, etc. in `utils.zig`) are necessary.
 
+TODO, use ref ML-KEM KAT files:
+https://github.com/usnistgov/ACVP-Server/tree/master/gen-val/json-files/ML-KEM-encapDecap-FIPS203
+https://github.com/usnistgov/ACVP-Server/tree/master/gen-val/json-files/ML-KEM-keyGen-FIPS203
+( per: https://groups.google.com/a/list.nist.gov/g/pqc-forum/c/vybKwrXx53k )
+
+
+
+
 2. **Constant-Time Ciphertext Comparison:** The `decaps` function in `mlkem.zig` compares ciphertexts (`c` and `c'`).  This *must* be done in constant time to prevent timing attacks.  The code acknowledges this but doesn't provide a constant-time implementation.  This is a high-priority security vulnerability that must be addressed.  Consider using `std.mem.compare` with masking or a dedicated constant-time comparison function.
 
 FIPS 203 highlights the importance of constant-time operations (Section 3.3, Section 7.3).  The ciphertext comparison in `ML-KEM.Decaps_internal` (Algorithm 18, line 9) is a critical security vulnerability if not implemented in constant time. 
@@ -288,3 +296,4 @@ FIPS 203 highlights the importance of constant-time operations (Section 3.3, Sec
 * **Test-Driven Development (TDD):**  Write tests *before* implementing functionality, especially for KATs.
 * **Incremental Development:** Focus on one area at a time (e.g., KATs, then constant-time comparison).
 * **Code Reviews:**  Get another developer to review the code for correctness and security.
+

@@ -7,9 +7,12 @@ const rng = @import("rng.zig");
 const utils = @import("utils.zig");
 const Error = @import("error.zig").Error;
 
-pub fn samplePolyCBD(comptime pd: params.ParamDetails, allocator: *mem.Allocator) Error![]u16 {
-    var bytes: [pd.eta1 * pd.n]u8 = undefined;
-    try rng.generateRandomBytes(&bytes); // Note: eta1 or eta2 here depends on context of use in ML-KEM
+pub fn samplePolyCBD(pd: params.ParamDetails, allocator: std.mem.Allocator) Error![]u16 {
+    // Use a dynamic allocation for bytes instead of a compile-time fixed array
+    var bytes = try allocator.alloc(u8, pd.eta1 * pd.n * 2);
+    defer allocator.free(bytes);
+
+    try rng.generateRandomBytes(bytes);
 
     var polynomial = try allocator.alloc(u16, pd.n);
 
@@ -17,8 +20,7 @@ pub fn samplePolyCBD(comptime pd: params.ParamDetails, allocator: *mem.Allocator
     while (i < pd.n) : (i += 1) {
         const x = sumBits(bytes[i * pd.eta1 .. i * pd.eta1 + pd.eta1]);
         const y = sumBits(bytes[pd.n * pd.eta1 + i * pd.eta1 .. pd.n * pd.eta1 + i * pd.eta1 + pd.eta1]);
-        //polynomial[i] = @intCast(u16, @mod((@as(i32, x) - @as(i32, y) + pd.q, pd.q)));
-        polynomial[i] = @rem(@as(u16, x) -% @as(u16, y) +% pd.q, pd.q); // No i32 casts needed
+        polynomial[i] = @rem(@as(u16, x) -% @as(u16, y) +% pd.q, pd.q);
     }
     return polynomial;
 }
@@ -53,5 +55,5 @@ test "samplePolyCBD generates different polynomials" {
 
     const p2 = try samplePolyCBD(pd, gpa.allocator());
     defer gpa.allocator().free(p2);
-    try std.testing.expect(!std.mem.eql(u16, &p1, &p2));
+    try std.testing.expect(!std.mem.eql(u16, p1, p2));
 }

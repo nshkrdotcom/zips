@@ -171,7 +171,7 @@ test "benchmark mlkem keygen" {
     const pd = Params.kem768; // Fix parameter type
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    var allocator = gpa.allocator();
+    const allocator = gpa.allocator();
 
     var timer = try std.time.Timer.start();
 

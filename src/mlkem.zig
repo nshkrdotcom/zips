@@ -33,7 +33,7 @@ inline fn secureZero(comptime T: type, slice: []volatile T) void {
 // Key Generation
 pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!KeyPair {
     const key_pair = try kpke.keygen(pd, allocator);
-    return .{ .public_key = key_pair.publicKey, .private_key = key_pair.privateKey };
+    return try .{ .public_key = key_pair.publicKey, .private_key = key_pair.privateKey };
 }
 
 // ML-KEM Encapsulation

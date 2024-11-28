@@ -64,7 +64,7 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
     // 2. Expand seed d into rho and sigma
     var rho_sigma = std.mem.zeroes([64]u8);
     crypto.hash.sha3.Sha3_512.hash(&d, &rho_sigma, .{});
-    var rho = rho_sigma[0..32].*;
+    const rho = rho_sigma[0..32].*;
     const sigma = rho_sigma[32..].*;
     _ = sigma; // Unused, but keep to prevent unused variable warning
 
@@ -73,7 +73,7 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
     for (0..pd.k) |i| {
         for (0..pd.k) |j| {
             var seed = [_]u8{0} ** 34;
-			@memcpy(&seed[0..32], &rho);            
+			@memcpy(seed[0..32].ptr, &rho); 
             seed[32] = @as(u8, @intCast(j));
             seed[33] = @as(u8, @intCast(i));
             A_hat[i * pd.k + j] = blk: {
@@ -174,11 +174,11 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     // ... (This part depends on the exact structure of your PublicKey.  Example below)
     const tBytes = pk.t;
     const publicKey_t = try utils.bytesToPolynomial(pd, tBytes);
-    var rho = pk.rho;
+    const rho = pk.rho;
     for (0..pd.k) |i| {
         for (0..pd.k) |j| {
             var seed = [_]u8{0} ** 34;
-            @memcpy(&seed[0..32], &rho);
+            @memcpy(seed[0..32], &rho);
             seed[32] = @as(u8, @intCast(j));
             seed[33] = @as(u8, @intCast(i));
             publicKey_A_hat[i * pd.k + j] = blk: {
@@ -309,13 +309,13 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Cip
     // Decode u
     for (0..pd.k) |i| {
         for (0..pd.n) |j| {
-            u[i][j] = std.mem.readIntLittle(u16, u_bytes[(i * pd.n + j) * 2 .. (i * pd.n + j + 1) * 2]);
+            u[i][j] = std.mem.readInt(u16, u_bytes[(i * pd.n + j) * 2 .. (i * pd.n + j + 1) * 2]);
         }
     }
 
     // Decode v
     for (0..pd.n) |j| {
-        v[j] = std.mem.readIntLittle(u16, v_bytes[j * 2 .. (j + 1) * 2]);
+        v[j] = std.mem.readInt(u16, v_bytes[j * 2 .. (j + 1) * 2]);
     }
 
     // 2. Compute s^T * u

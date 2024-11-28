@@ -102,7 +102,6 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 	for (0..pd.k) |i| {
 		s[i] = try cbd.samplePolyCBD(pd, arena_allocator);
 	}
-	// Free s
 
     // 5. Generate error vector e (using CBD)
 	var e = try arena_allocator.alloc([]u16, pd.k);
@@ -115,31 +114,49 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 	defer allocator.free(zetas);
 
     // 6. Compute t = As + e
-    var t = try arena_allocator.alloc([]u16, pd.k);
+    var t = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
     var s_hat = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
-    for (0..pd.k) |i| {
-        ntt.ntt(pd, &s[i], zetas); // calculate ntt of s once instead of repeatedly
-        @memcpy(&s_hat[i], &s[i]);
+	for (0..pd.k) |i| {
+		var s_array: ntt.RqTq(pd) = undefined;
+		@memcpy(&s_array, s[i][0..256]);
+		ntt.ntt(pd, &s_array, zetas);
+		@memcpy(&s_hat[i], &s_array);
 		arena_allocator.free(s[i]);
-    }
+	}
 	arena_allocator.free(s);
+
+	for (0..pd.k) |i| {
+		var t_array: ntt.RqTq(pd) = undefined;
+		@memcpy(&t_array, t[i][0..pd.n]);
+		ntt.ntt(pd, &t_array, zetas);
+		@memcpy(&t[i], &t_array);
+		arena_allocator.free(t[i]);
+	}
+
 	
     // Initialize t to zeroes
-	std.mem.zeroes(t);
+	//std.mem.zeroes(t);
+    //for (0..pd.k) |i| {
+	//	@memset(t[i], 0);
+    //}
+	
 
     for (0..pd.k) |i| {
         for (0..pd.k) |j| {
             var temp_poly: ntt.RqTq(pd) = undefined;
 			@memset(&temp_poly, 0);
             for (0..pd.n) |z| {
-                temp_poly[z] = @as(u16, @mod(@as(u32, A_hat[i * pd.k + j][z]) * @as(u32, s_hat[j][z]), pd.q));
+				const z_a: u16 = @intCast(@mod(@as(u32, A_hat[i * pd.k + j][z]) * @as(u32, s_hat[j][z]), pd.q));
+                temp_poly[z] = @as(u16, z_a);
             }
             for (0..pd.n) |z| {
-                t[i][z] = @as(u16, @mod(t[i][z] + temp_poly[z], pd.q));
+				const iz_a: u16 = @intCast(@mod(t[i][z] + temp_poly[z], pd.q));
+                t[i][z] = @as(u16, iz_a);
             }
         }
         for (0..pd.n) |z| {
-            t[i][z] = @as(u16, @mod(@as(u32, t[i][z]) + @as(u32, e[i][z]), pd.q));
+			const iz_b: u16 = @intCast(@mod(@as(u32, t[i][z]) + @as(u32, e[i][z]), pd.q));
+            t[i][z] = @as(u16, iz_b);
         }
     }	
 	for (0..pd.k) |i| {
@@ -153,9 +170,12 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
     for (0..pd.k) |i| {
         ntt.nttInverse(pd, &t[i], zetas);
         var current_index: usize = i * pd.n * 2;
-        for (0..pd.n) |j| {
-            const compressed_t = compress(pd, t[i][j], pd.du);
-            std.mem.writeIntLittle(u16, encoded_t[current_index .. current_index + 2], compressed_t);
+        for (0..pd.n) |j| {				
+            const compressed_t: u16 = compress(pd, t[i][j], pd.du);
+			const lsb: u8 = @intCast(@as(u16, compressed_t));
+			const msb: u8 = @intCast(@as(u16, compressed_t >> 8));
+			encoded_t[current_index] = msb;
+			encoded_t[current_index+1] = lsb;
             current_index += 2;
         }
     }
@@ -279,7 +299,11 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 
     var publicKey_t_hat = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(publicKey_t_hat);
-    @memcpy(publicKey_t_hat, &publicKey_t);
+	// @memcpy(publicKey_t_hat, publicKey_t.ptr);
+	for (0..pd.n) |j| {
+		publicKey_t_hat[j] = publicKey_t;
+	}
+	
 
     for (0..pd.k) |i| ntt(pd, &publicKey_t_hat[i]);
 
@@ -405,27 +429,20 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Cip
 
 // Secure Key Destruction
 pub fn destroyPrivateKey(sk: *PrivateKey) void {
-    // ... securely zero out and deallocate private key data
-    // Securely zero out the private key polynomial
-    // secureZero(u16, sk.s);
-    //sk.arena.deinit(); // Free all memory allocated by the arena, including sk.s
-    // Zero out other sensitive data if needed
-    for (sk.s) |poly| { // Iterate over the *k* polynomials
-        sk.allocator.free(poly); // Free the memory for each polynomial
+    for (sk.s) |poly| {
+        sk.allocator.free(poly);
     }
-    sk.allocator.free(sk.s); // Free the outer slice
+    sk.allocator.free(sk.s);
 }
 
 pub fn destroyPublicKey(pk: *PublicKey) void {
-	pk.allocator.free(pk.t); // Free the memory for each polynomial
-	pk.allocator.free(pk.rho); // Free the memory for each polynomial	
+	pk.allocator.free(pk.t);
 }
 
 const expectError = std.testing.expectError;
 
 test "kpke keygen generates keys" {
-    // Use a compile-time known parameter instead of a runtime value
-    const pd = comptime params.Params.kem768.get(); // Use comptime
+    const pd = comptime params.Params.kem768.get();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();

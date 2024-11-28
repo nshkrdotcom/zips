@@ -14,13 +14,13 @@ pub const PublicKey = struct {
     t: []u8,
     rho: [32]u8,
 	allocator: mem.Allocator, // The allocator used (important for freeing)
-	zetas: []u16,
+	//zetas: []u16,
 };
 
 pub const PrivateKey = struct {
     s: []const []const u16, // A slice of k polynomial slices (each of length 256 when NTT'd)
     allocator: mem.Allocator, // The allocator used (important for freeing)
-	zetas: []u16,
+	//zetas: []u16,
 };
 
 pub const Ciphertext = []u8; // Ciphertext will be a byte array
@@ -111,8 +111,12 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 	}
 
 	// In keygen, precompute zetas
+	var encoded_t = try allocator.alloc(u8, pd.publicKeyBytes - 32);
+    errdefer allocator.free(encoded_t);
 	const zetas = try ntt.precomputeZetas(pd, arena_allocator);
 	defer allocator.free(zetas);
+	//const zetas = try ntt.precomputeZetas(pd, allocator);
+	//errdefer allocator.free(zetas);
 
     // 6. Compute t = As + e
     var t = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
@@ -121,11 +125,12 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 		var s_array: ntt.RqTq(pd) = undefined;
 		@memcpy(&s_array, s[i][0..256]);
 		ntt.ntt(pd, &s_array, zetas);
-		@memcpy(&s_hat[i], &s_array);
-		arena_allocator.free(s[i]);
-	}
-	arena_allocator.free(s);
-
+		@memcpy(&s_hat[i], &s_array);	
+	}	
+	for (0..pd.k) |i| {
+        arena_allocator.free(s[i]);
+    }
+    arena_allocator.free(s);
 	for (0..pd.k) |i| {
 		var t_array: ntt.RqTq(pd) = undefined;
 		@memcpy(&t_array, t[i][0..pd.n]);
@@ -133,7 +138,6 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 		@memcpy(&t[i], &t_array);
 		arena_allocator.free(t[i]);
 	}
-
 	
     // Initialize t to zeroes
 	//std.mem.zeroes(t);
@@ -167,7 +171,7 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 	arena_allocator.free(s_hat);
 	arena_allocator.free(e);
 
-    var encoded_t = try arena_allocator.alloc(u8, pd.publicKeyBytes - 32);
+    //var encoded_t = try arena_allocator.alloc(u8, pd.publicKeyBytes - 32);
     for (0..pd.k) |i| {
         ntt.nttInverse(pd, &t[i], zetas);
         var current_index: usize = i * pd.n * 2;
@@ -181,14 +185,20 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
         }
     }
 
-	for (0..pd.k) |i| {
-		arena_allocator.free(t[i]);
-	}
-	arena_allocator.free(t);
+
+	const pk_t = try allocator.dupe(u8, encoded_t); // Duplicate the slice
+	errdefer allocator.free(pk_t); // Free the duplicate slice later
+	arena_allocator.free(encoded_t); // Free the original slice
+	
+	//for (0..pd.k) |i| {
+	//	arena_allocator.free(t[i]);
+	//}
+	//arena_allocator.free(t);
 	
     // 7. Create PublicKey and PrivateKey structs
-    const pk = PublicKey{ .t = encoded_t, .rho = rho, .allocator = arena_allocator, .zetas = zetas};
-    const sk = PrivateKey{ .s = s, .allocator = arena_allocator, .zetas = zetas};
+	
+    const pk = PublicKey{ .t = pk_t, .rho = rho, .allocator = allocator };
+    const sk = PrivateKey{ .s = s, .allocator = allocator};
     return KeyPair{ .publicKey = pk, .privateKey = sk };
 }
 
@@ -258,7 +268,9 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     const y_hat = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(y_hat);
 	
-	const zetas = pk.zetas;
+	const zetas = try ntt.precomputeZetas(pd, arena_allocator);
+	defer allocator.free(zetas);
+
 	
     for (0..pd.k) |i| {
 		ntt.ntt(pd, &y[i], zetas);
@@ -379,6 +391,7 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 
 // K-PKE Decryption
 pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Ciphertext, allocator: *const mem.Allocator, arena: *std.heap.ArenaAllocator) Error![]u8 {
+	const arena_allocator = arena.allocator();
     const u_bytes = ciphertext[0 .. pd.k * pd.n * pd.du / 8];
     const v_bytes = ciphertext[pd.k * pd.n * pd.du / 8 ..];
     var u = try arena.allocator().alloc(ntt.RqTq(pd), pd.k);
@@ -401,7 +414,9 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Cip
 		}
 	}
 
-	const zetas = sk.zetas;
+	const zetas = try ntt.precomputeZetas(pd, arena_allocator);
+	defer allocator.free(zetas);
+
 
     // 2. Compute s^T * u
     var s_hat = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.k);
@@ -443,12 +458,12 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Cip
 }
 
 // Secure Key Destruction
-pub fn destroyPrivateKey(sk: *PrivateKey) void {
-    for (sk.s) |poly| {
-        sk.allocator.free(poly);
-    }
-    sk.allocator.free(sk.s);
-}
+//pub fn destroyPrivateKey(sk: *PrivateKey) void {
+//    for (sk.s) |poly| {
+//        sk.allocator.free(poly);
+//    }
+//    sk.allocator.free(sk.s);
+//}
 
 pub fn destroyPublicKey(pk: *PublicKey) void {
 	pk.allocator.free(pk.t);
@@ -475,8 +490,8 @@ test "k-pke encrypt and decrypt are inverses" {
 
     const result = try keygen(pd, allocator);
     const pk = result.publicKey;
-    var sk = result.privateKey;
-    defer destroyPrivateKey(&sk);
+    const sk = result.privateKey;
+    //defer destroyPrivateKey(&sk);
 
     const message = "this is my message";
     const ciphertext = try encrypt(pd, pk, message, arena.allocator());

@@ -20,34 +20,25 @@ fn test_kpke_kats(comptime param_set: params.Params, kat_vectors: anytype) !void
         var arena = std.heap.ArenaAllocator.init(allocator); // Arena per KAT vector
         defer arena.deinit();
 
-
-        var publicKey = try utils.decodePublicKey(pd, kat.pk, arena.allocator());
         // No defer for publicKey.arena.deinit() needed; the loop's arena handles it.
-
+        var publicKey = try utils.decodePublicKey(pd, kat.pk, arena.allocator());
         var privateKey = try utils.decodePrivateKey(pd, kat.sk, arena.allocator());
-        // Similarly, no defer privateKey.arena.deinit() needed
-
         var ciphertext = try utils.decodeCiphertext(pd, kat.ct, arena.allocator());
-        // No defer ciphertext.arena.deinit() needed
-
-        const decryptedMessage = try kpke.decrypt(pd, privateKey, ciphertext, &allocator, &arena);
-        defer arena.allocator().free(decryptedMessage);
-
+        
+		const decryptedMessage = try kpke.decrypt(pd, privateKey, ciphertext, &allocator, &arena);
+		defer arena.allocator().free(decryptedMessage);
         var decodedMsg = try utils.bytesToPolynomial(pd, kat.msg, arena.allocator());  // Use arena
-
         var msgBytes = try utils.polynomialToBytes(pd, &decodedMsg, arena.allocator()); // Use arena
-        // No defer allocator.free(msgBytes); the arena handles it
 
         try expectEqualSlices(u8, msgBytes, decryptedMessage);
 
         var keypair = try kpke.keygen(pd, allocator); // keygen uses its own arena internally
-        defer kpke.destroyPrivateKey(&keypair.privateKey);
+        //defer kpke.destroyPrivateKey(&keypair.privateKey);
         defer kpke.destroyPublicKey(&keypair.publicKey);
 
         const encryptedMessage = try kpke.encrypt(pd, keypair.PublicKey, kat.msg, arena.allocator());  // Use arena
         defer arena.allocator().free(encryptedMessage);
-        try expectEqualSlices(u8, encryptedMessage, ciphertext);
-
+        try expectEqualSlices(u8, encryptedMessage, ciphertext);\
     }
 }
 

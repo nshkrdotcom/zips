@@ -5,6 +5,7 @@ const params = @import("params.zig");
 const rng = @import("rng.zig");
 const utils = @import("utils.zig");
 const kpke = @import("kpke.zig");
+const ntt = @import("ntt.zig");
 const Error = @import("error.zig").Error;
 const mem = std.mem;
 
@@ -65,10 +66,19 @@ pub fn encaps(comptime pd: params.ParamDetails, pk: PublicKey, allocator: mem.Al
     crypto.hash.sha3.Sha3_512.hash(hash_input, &K_r, .{});
     const K = K_r[0..32].*;
 
+	const zetas = try ntt.precomputeZetas(pd, arena_allocator);
+	errdefer arena_allocator.free(zetas);
+
     // 3. Encrypt m using K-PKE
     const c = try kpke.encrypt(pd, pk, &m, arena_allocator); // Pass arena_allocator
-    defer arena_allocator.free(c);
-    const ciphertext = try arena_allocator.alloc(u8, c.len);
+    //defer arena_allocator.free(c);
+	
+	const ciphertext = try arena_allocator.dupe(u8, c); // Copy ciphertext before freeing c
+	defer arena_allocator.free(ciphertext);
+	arena_allocator.free(c);
+	
+	
+    //const ciphertext = try arena_allocator.alloc(u8, c.len);
     defer arena_allocator.free(ciphertext);
     @memcpy(ciphertext, c);
     return EncapsResult{
@@ -89,6 +99,9 @@ pub fn decaps(comptime pd: params.ParamDetails, pk: PublicKey, sk: PrivateKey, c
         secureZero(u8, m_prime);
         arena_allocator.free(m_prime);
     }
+	
+	const zetas = try ntt.precomputeZetas(pd, arena_allocator);
+	defer arena_allocator.free(zetas);
 
     // 2. Compute K' from m'
     var K_prime_r_prime: [64]u8 = undefined;
@@ -125,9 +138,9 @@ pub fn decaps(comptime pd: params.ParamDetails, pk: PublicKey, sk: PrivateKey, c
     return K;
 }
 
-pub fn destroyPrivateKey(sk: *PrivateKey) void {
-    kpke.destroyPrivateKey(sk);
-}
+//pub fn destroyPrivateKey(sk: *PrivateKey) void {
+//    kpke.destroyPrivateKey(sk);
+//}
 
 pub fn destroyPublicKey(pk: *PublicKey) void {
     kpke.destroyPublicKey(pk);
@@ -145,7 +158,7 @@ test "mlkem keygen generates keys" {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
     var keypair = try keygen(pd, allocator);
-    defer destroyPrivateKey(&keypair.private_key);
+    //defer destroyPrivateKey(&keypair.private_key);
     defer destroyPublicKey(&keypair.public_key);
 }
 
@@ -159,6 +172,6 @@ test "mlkem encaps and decaps work" {
     defer destroyCiphertext(encaps_result.ciphertext);
     const ss = try decaps(pd, keypair.public_key, keypair.private_key, encaps_result.ciphertext, allocator);
     try std.testing.expectEqualSlices(u8, &encaps_result.shared_secret, &ss);
-    destroyPrivateKey(&keypair.private_key);
+    //destroyPrivateKey(&keypair.private_key);
     destroyPublicKey(&keypair.public_key);
 }

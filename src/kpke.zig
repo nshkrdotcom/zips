@@ -105,7 +105,7 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 	// Free s
 
     // 5. Generate error vector e (using CBD)
-	var e = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
+	var e = try arena_allocator.alloc([]u16, pd.k);
 	for (0..pd.k) |i| {
 		e[i] = try cbd.samplePolyCBD(pd, arena_allocator);
 	}
@@ -129,7 +129,8 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 
     for (0..pd.k) |i| {
         for (0..pd.k) |j| {
-            var temp_poly = ntt.RqTq(pd){};
+            var temp_poly: ntt.RqTq(pd) = undefined;
+			@memset(&temp_poly, 0);
             for (0..pd.n) |z| {
                 temp_poly[z] = @as(u16, @mod(@as(u32, A_hat[i * pd.k + j][z]) * @as(u32, s_hat[j][z]), pd.q));
             }
@@ -238,22 +239,30 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 	
 	const zetas = pk.zetas;
 	
-    for (0..pd.k) |i| ntt.ntt(pd, &y[i], zetas);
+    for (0..pd.k) |i| {
+		ntt.ntt(pd, &y[i], zetas);
+	}
 
     @memcpy(y_hat, y);
 
     for (0..pd.k) |i| {
         for (0..pd.k) |j| {
-            var temp_poly = ntt.RqTq(pd){};
+            var temp_poly: ntt.RqTq(pd) = undefined;
+			@memset(&temp_poly, 0);
             for (0..pd.n) |k| {
-                temp_poly[k] = @as(u16, @mod(@as(u32, publicKey_A_hat[j * pd.k + i][k]) * @as(u32, y_hat[j][k]), pd.q));
+				const k_a: u16 = @intCast(@mod(@as(u32, publicKey_A_hat[j * pd.k + i][k]) * @as(u32, y_hat[j][k]), pd.q));
+                temp_poly[k] = @as(u16, k_a);
             }
 
             for (0..pd.n) |k| {
-                u_hat[i][k] = @as(u16, @mod(@as(u32, u_hat[i][k]) + @as(u32, temp_poly[k]), pd.q));
+				const u_hat_a: u16 = @intCast(@mod(@as(u32, u_hat[i][k]) + @as(u32, temp_poly[k]), pd.q));
+                u_hat[i][k] = @as(u16, u_hat_a);
             }
         }
-        for (0..pd.n) |k| u_hat[i][k] = @as(u16, @mod(@as(u32, u_hat[i][k]) + @as(u32, e1[i][k]), pd.q));
+        for (0..pd.n) |k| {
+			const u_hat_b: u16 = @intCast(@mod(@as(u32, u_hat[i][k]) + e1[i][k], pd.q));
+			u_hat[i][k] = @as(u16, u_hat_b);
+		}
     }
 
     var u = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.k);
@@ -273,14 +282,17 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 
     for (0..pd.k) |i| ntt(pd, &publicKey_t_hat[i]);
 
-    var m_hat = ntt.RqTq(pd){};
+    var m_hat: ntt.RqTq(pd) = undefined;
+	@memset(&m_hat, 0);
     @memcpy(&m_hat, &m);
     ntt(pd, &m_hat);
 
-    var v_hat = ntt.RqTq(pd){};
+    var v_hat: ntt.RqTq(pd) = undefined;
+	@memset(&v_hat, 0);
 
     for (0..pd.k) |j| {
-        var temp_poly = ntt.RqTq(pd){};
+        var temp_poly: ntt.RqTq(pd) = undefined;
+		@memset(&temp_poly, 0);
 
         for (0..pd.n) |k| {
             temp_poly[k] = @as(u16, @mod(@as(u32, publicKey_t_hat[j][k]) * @as(u32, y_hat[j][k]), pd.q));
@@ -296,7 +308,6 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
         v_hat[k] = @as(u16, @mod(@as(u32, v_hat[k]) + @as(u32, m_hat[k]), pd.q));
     }
 
-    //var v = ntt.RqTq(pd){};
     var v = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.n);
     ntt.nttInverse(pd, &v_hat, zetas);
     @memcpy(std.mem.asBytes(&v), std.mem.asBytes(&v_hat));
@@ -365,9 +376,11 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Cip
         @memcpy(&u[i], zetas);
         @memcpy(&u_hat[i], &u[i]);
     }
-    var w_hat = ntt.RqTq(pd){};
+	var w_hat: ntt.RqTq(pd) = undefined;
+	@memset(&w_hat, 0);
     for (0..pd.k) |i| {
-        var temp = ntt.RqTq(pd){};
+		var temp:  ntt.RqTq(pd) = undefined;
+		@memset(&temp, 0);
         for (0..pd.n) |j| {
             temp[j] = @as(u16, @intCast(@mod(@as(u32, s_hat[i][j]) * @as(u32, u_hat[i][j]), pd.q)));
         }
@@ -375,11 +388,13 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Cip
             w_hat[j] = @as(u16, @intCast(@mod(@as(u32, w_hat[j]) + @as(u32, temp[j]), pd.q)));
         }
     }
-    var w = ntt.RqTq(pd){};
+	var w: ntt.RqTq(pd) = undefined;
+	@memset(&w, 0);
     ntt.nttInverse(pd, &w_hat, zetas);
     @memcpy(&w, &w_hat);
     for (0..pd.n) |i| {
-        w[i] = @as(u16, @intCast(@mod(@as(i32, v[i]) - @as(i32, w[i]) + pd.q, pd.q)));
+		// TODO: This line is wrong, it was originally using v[i], not v[0][i]:
+        w[i] = @as(u16, @intCast(@mod(@as(i32, v[0][i]) - @as(i32, w[i]) + pd.q, pd.q)));
     }
 
     // 3. Decode message from w

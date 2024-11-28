@@ -8,13 +8,13 @@ const utils = @import("utils.zig");
 const Error = @import("error.zig").Error;
 
 pub fn samplePolyCBD(pd: params.ParamDetails, allocator: std.mem.Allocator) Error![]u16 {
-    // Use a dynamic allocation for bytes instead of a compile-time fixed array
-    var bytes = try allocator.alloc(u8, pd.eta1 * pd.n * 2);
-    defer allocator.free(bytes);
+    const bytes = try allocator.alloc(u8, pd.eta1 * pd.n * 2);
+    errdefer allocator.free(bytes);
 
     try rng.generateRandomBytes(bytes);
 
     var polynomial = try allocator.alloc(u16, pd.n);
+    errdefer allocator.free(polynomial);
 
     var i: usize = 0;
     while (i < pd.n) : (i += 1) {
@@ -22,6 +22,7 @@ pub fn samplePolyCBD(pd: params.ParamDetails, allocator: std.mem.Allocator) Erro
         const y = sumBits(bytes[pd.n * pd.eta1 + i * pd.eta1 .. pd.n * pd.eta1 + i * pd.eta1 + pd.eta1]);
         polynomial[i] = @rem(@as(u16, x) -% @as(u16, y) +% pd.q, pd.q);
     }
+
     return polynomial;
 }
 

@@ -3,7 +3,6 @@ const std = @import("std");
 const mlkem = @import("mlkem.zig");
 const paramsModule = @import("params.zig");
 const rng = @import("rng.zig");
-
 const Error = @import("error.zig").Error;
 
 const KeyPair = struct {
@@ -59,57 +58,48 @@ pub fn aeadEncrypt(
     nonce: [12]u8,
     plaintext: []const u8,
     additional_data: ?[]const u8,
-    allocator: *std.mem.Allocator,
+    allocator: std.mem.Allocator,
 ) Error![]u8 {
-    var ciphertext = try allocator.alloc(u8, plaintext.len + 16); // Allocate for tag
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var ciphertext = try arena.allocator().alloc(u8, plaintext.len + 16); // Allocate in arena
+    errdefer arena.allocator().free(ciphertext);
     var tag: [16]u8 = undefined;
+
     const gcm = std.crypto.aead.aes_gcm.Aes256Gcm;
     gcm.encrypt(ciphertext[0..plaintext.len], &tag, plaintext, additional_data orelse &[_]u8{}, nonce, key);
-    // Append tag to ciphertext
     @memcpy(ciphertext[plaintext.len..], &tag);
-    return ciphertext;
+
+    const result = try allocator.dupe(u8, ciphertext); // Copy out of arena
+    return result;
 }
 
 // Authenticated Decryption (AEAD)
-//pub fn aeadDecrypt(
-//    key: SharedSecret,
-//    nonce: [12]u8,
-//    ciphertext: []const u8,
-//    additional_data: ?[]const u8,
-//) Error![]u8 {
-//    if (ciphertext.len < 16) return error.InvalidCiphertext; // Check for minimum length
-//
-//    const allocator = std.heap.page_allocator; // Use const allocator
-//    const plaintext = try allocator.alloc(u8, ciphertext.len - 16);
-//    const gcm = std.crypto.aead.aes_gcm.Aes256Gcm;
-//    try gcm.decrypt(plaintext, ciphertext, additional_data, nonce, key, {});
-//    return plaintext;
-//}
 pub fn aeadDecrypt(
     key: SharedSecret,
     nonce: [12]u8,
     ciphertext: []const u8,
     additional_data: ?[]const u8,
-    allocator: *std.mem.Allocator, // Add allocator parameter
+    allocator: std.mem.Allocator,
 ) Error![]u8 {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
     if (ciphertext.len < 16) return error.InvalidCiphertext;
     const plaintext_len = ciphertext.len - 16;
-    var plaintext = try allocator.alloc(u8, plaintext_len);
-    errdefer allocator.free(plaintext);
-    const tag = ciphertext[plaintext_len..]; // Extract tag
+
+    var plaintext = try arena.allocator().alloc(u8, plaintext_len);
+    errdefer arena.allocator().free(plaintext);
+    const tag = ciphertext[plaintext_len..];
 
     const gcm = std.crypto.aead.aes_gcm.Aes256Gcm;
-    gcm.decrypt(plaintext[0..ciphertext.len], ciphertext, tag, additional_data orelse &[_]u8{}, nonce, key);
-    //) catch |err| {
-    //    switch(err) {
-    //        error.AuthenticationFailed => {
-    //            allocator.free(plaintext); // Free plaintext on auth failure before returning to prevent leak
-    //            return Error.DecryptionFailure;
-    //        },
-    //        else => |e| return e, // consider adding additional checks here and return other possible errors from your Error set
-    //    }
-    //};
-    return plaintext;
+    gcm.decrypt(plaintext, ciphertext[0..plaintext_len], tag, additional_data orelse &[_]u8{}, nonce, key) catch |err| {
+        return err; // Or handle the decryption error as needed
+    };
+
+    const result = try allocator.dupe(u8, plaintext); // Copy out of arena
+    return result;
 }
 
 // Random Number Generation (using std.crypto.random)

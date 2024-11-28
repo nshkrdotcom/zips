@@ -167,13 +167,24 @@ pub fn decaps(comptime params: params.Params, pk: PublicKey, sk: PrivateKey, ct:
         K = J(sk.z, ct.data); // Use sk.z (random value from private key) and ct.data, Use arena.allocator()
     }
 
-    return K;
+    return K ;
 
 }
 
 // Helper function for J (make sure this handles allocation correctly, using the provided or arena allocator)
-fn J(z: [32]u8, c: []const u8) SharedSecret {
-    // ... (implementation of J - should use arena.allocator() if needed)
+// mlkem.zig (J helper function implementation)
+fn J(z: [32]u8, c: []const u8, allocator: std.mem.Allocator) SharedSecret {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    const hash_input = try arena.allocator().alloc(u8, z.len + c.len);
+    errdefer arena.allocator().free(hash_input);
+    @memcpy(hash_input[0..z.len], &z);
+    @memcpy(hash_input[z.len..], c);
+
+    var K: SharedSecret = undefined; // Or [32]u8 if SharedSecret is a type alias for that
+    crypto.hash.shake256.Shake256.hash(hash_input, &K, .{}); //  SHAKE256 for variable output
+    return K;
 }
 
 pub fn destroyCiphertext(ct: []u8) void {

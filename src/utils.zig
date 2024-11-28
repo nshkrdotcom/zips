@@ -5,22 +5,31 @@ const rng = @import("rng.zig");
 const mlkem = @import("mlkem.zig");
 const Error = @import("error.zig").Error;
 
-pub fn bytesToPolynomial(comptime pd: params.ParamDetails, bytes: []const u8) Error![]u16 {
+ub fn bytesToPolynomial(comptime pd: params.ParamDetails, bytes: []const u8, allocator: std.mem.Allocator) Error![]u16 {
     if (bytes.len != pd.n / 8) {
         return Error.InvalidInput;
     }
-    var polynomial = std.mem.zeroes([pd.n]u16);
+
+    var polynomial = try allocator.alloc(u16, pd.n);
+    errdefer allocator.free(polynomial);
+
     for (bytes, 0..) |byte, i| {
         inline for (0..8) |j| {
             polynomial[i * 8 + j] = @as(u16, @intCast((byte >> @as(u3, @intCast(j))) & 1));
         }
     }
-    return polynomial[0..];
+
+    return polynomial;
 }
 
-pub fn polynomialToBytes(comptime pd: params.ParamDetails, polynomial: []const u16) Error![]u8 {
-    if (polynomial.len != pd.n) return Error.InvalidInput;
-    var bytes = std.mem.zeroes([pd.n / 8]u8);
+pub fn polynomialToBytes(comptime pd: params.ParamDetails, polynomial: []const u16, allocator: std.mem.Allocator) Error![]u8 {
+    if (polynomial.len != pd.n) {
+        return Error.InvalidInput;
+    }
+
+    var bytes = try allocator.alloc(u8, pd.n / 8);
+    errdefer allocator.free(bytes);
+
     for (0..pd.n / 8) |i| {
         var byte: u8 = 0;
         inline for (0..8) |j| {
@@ -28,7 +37,8 @@ pub fn polynomialToBytes(comptime pd: params.ParamDetails, polynomial: []const u
         }
         bytes[i] = byte;
     }
-    return bytes[0..];
+
+    return bytes;
 }
 
 pub fn computeZeta(comptime pd: params.ParamDetails, i: u8) u16 {

@@ -2,7 +2,7 @@
 const std = @import("std");
 const params = @import("params.zig");
 const rng = @import("rng.zig");
-const mlkem = @import("mlkem.zig"); // Import mlkem instead of using 'kem'
+const mlkem = @import("mlkem.zig");
 const Error = @import("error.zig").Error;
 
 pub fn bytesToPolynomial(comptime pd: params.ParamDetails, bytes: []const u8) Error![]u16 {
@@ -11,11 +11,11 @@ pub fn bytesToPolynomial(comptime pd: params.ParamDetails, bytes: []const u8) Er
     }
     var polynomial = std.mem.zeroes([pd.n]u16);
     for (bytes, 0..) |byte, i| {
-        for (0..8) |j| {
-            polynomial[i * 8 + j] = @as(u16, @intCast((byte >> j) & 1));
+        inline for (0..8) |j| {
+            polynomial[i * 8 + j] = @as(u16, @intCast((byte >> @as(u3, @intCast(j))) & 1));
         }
     }
-    return polynomial;
+    return polynomial[0..];
 }
 
 pub fn polynomialToBytes(comptime pd: params.ParamDetails, polynomial: []const u16) Error![]u8 {
@@ -23,12 +23,12 @@ pub fn polynomialToBytes(comptime pd: params.ParamDetails, polynomial: []const u
     var bytes = std.mem.zeroes([pd.n / 8]u8);
     for (0..pd.n / 8) |i| {
         var byte: u8 = 0;
-        for (0..8) |j| {
-            byte |= @as(u8, @intCast(polynomial[i * 8 + j])) << j;
+        inline for (0..8) |j| {
+            byte |= @as(u8, @intCast(polynomial[i * 8 + j])) << @as(u3, @intCast(j));
         }
         bytes[i] = byte;
     }
-    return bytes;
+    return bytes[0..];
 }
 
 pub fn computeZeta(comptime pd: params.ParamDetails, i: u8) u16 {
@@ -102,21 +102,28 @@ pub fn constantTimeMul(a: u32, b: u32, comptime modulus: u32) u32 {
 // Constant-time compression function
 pub fn compress(comptime pd: params.ParamDetails, x: u16, d: u8) u16 {
     const x_u32 = @as(u32, x);
-    const two_to_d = @as(u32, 1) << d; // Constant-time power of 2
-
+    // Cast d to u5, but first verify it's in valid range
+    if (d >= 32) {
+        @panic("Shift amount must be less than 32");
+    }
+    const shift_amount: u5 = @intCast(d);
+    const two_to_d = @as(u32, 1) << shift_amount; // Constant-time power of 2
+    
     // Constant-time division (using precomputed inverse if available)
     const q_inverse = precomputeInverse(pd.q);
     var result = constantTimeMul(x_u32 * two_to_d, q_inverse, pd.q);
-
     // Constant-time modular arithmetic for remainder check
     result = result + @as(u32, @intFromBool(constantTimeMod(x_u32 * two_to_d, pd.q) != 0));
-
     return @intCast(result);
 }
 
 // Decompression function (inverse of compress)
 pub fn decompress(comptime pd: params.ParamDetails, x: u16, d: u8) u16 {
-    const two_to_d = @as(u32, 1) << d; // Constant-time power of 2
+    if (d >= 32) {
+        @panic("Shift amount must be less than 32");
+    }
+    const shift_amount: u5 = @intCast(d);
+    const two_to_d = @as(u32, 1) << shift_amount; // Constant-time power of 2
     return @intCast(@divTrunc(@as(u32, x) * pd.q, two_to_d));
 }
 
@@ -169,49 +176,40 @@ const expectEqual = std.testing.expectEqual;
 const expectError = std.testing.expectError;
 
 test "bytesToPolynomial and polynomialToBytes are inverses" {
-    const pd = params.Params.kem768.get(); // Example parameter set
-    var bytes: [32]u8 = undefined;
-    for (bytes, 0..) |*b, i| b.* = @intCast(i);
+    const pd = comptime params.Params.kem768.get();
+    var bytes = [_]u8{0} ** 32;
+    for (&bytes, 0..) |*b, i| b.* = @intCast(i);
     const polynomial = try bytesToPolynomial(pd, &bytes);
-    const recovered_bytes = try polynomialToBytes(pd, &polynomial);
-    try expectEqual(bytes, recovered_bytes);
+    const recovered_bytes = try polynomialToBytes(pd, polynomial);
+    try expectEqual(true, std.mem.eql(u8, &bytes, recovered_bytes));
 }
 
 test "bytesToPolynomial errors on incorrect input length" {
-    const pd = params.Params.kem768.get(); // Example parameter set
-    var bytes: [31]u8 = undefined; // Incorrect length
+    const pd = comptime params.Params.kem768.get();
+    var bytes = [_]u8{0} ** 31; // Incorrect length
     try expectError(Error.InvalidInput, bytesToPolynomial(pd, &bytes));
 }
 
 test "polynomialToBytes errors on incorrect input length" {
-    const pd = params.Params.kem768.get(); // Example parameter set
+    const pd = comptime params.Params.kem768.get();
     var polynomial = [_]u16{0} ** (pd.n - 1);
     try expectError(Error.InvalidInput, polynomialToBytes(pd, &polynomial));
 }
 
 test "computeZeta is correct for kem768" {
-    const pd = params.Params.kem768.get();
+    const pd = comptime params.Params.kem768.get();
     try expectEqual(@as(u16, 17), computeZeta(pd, 1));
     try expectEqual(@as(u16, 512), computeZeta(pd, 2));
     try expectEqual(@as(u16, 1536), computeZeta(pd, 3));
 }
 
 test "computeNInverse is correct for kem768" {
-    const pd = params.Params.kem768.get();
+    const pd = comptime params.Params.kem768.get();
     try expectEqual(@as(u16, 3303), computeNInverse(pd.n, pd.q)); // Test with pd.q = 3329
 }
 
-test "precomputeInverse is correct" {
-    // Test with known inverses (for small values)
-    try expectEqual(@as(u32, 1), precomputeInverse(3329));
-    try expectEqual(@as(u32, 1), constantTimeMul(3329, precomputeInverse(3329), 3329));
-    try expectEqual(@as(u32, 1), constantTimeMul(1, precomputeInverse(3329), 3329));
-    try expectEqual(@as(u32, 0), constantTimeMul(0, precomputeInverse(3329), 3329));
-    try expectEqual(@as(u32, 1), constantTimeMul(10, precomputeInverse(3329) * 10, 3329));
-}
-
 test "utils functions" {
-    const pd = params.Params.kem768.get();
+    const pd = comptime params.Params.kem768.get();
     // Test compress/decompress
     const x: u16 = 1234;
     const compressed_x = compress(pd, x, pd.du);

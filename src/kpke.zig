@@ -241,7 +241,7 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 	
     for (0..pd.k) |i| {
 		ntt.ntt(pd, &y[i], zetas);
-	}
+		}
 
     @memcpy(y_hat, y);
 
@@ -260,7 +260,8 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
             }
         }
         for (0..pd.n) |k| {
-			const u_hat_b: u16 = @intCast(@mod(@as(u32, u_hat[i][k]) + e1[i][k], pd.q));
+			//const u_hat_b: u16 = @intCast(@mod(@as(u32, u_hat[i][k]) + e1[i][k], pd.q));
+			const u_hat_b: u16 = @intCast(@mod(@as(u32, u_hat[i][k]) + e1[k], pd.q)); // was e1[i][k]
 			u_hat[i][k] = @as(u16, u_hat_b);
 		}
     }
@@ -416,14 +417,8 @@ pub fn destroyPrivateKey(sk: *PrivateKey) void {
 }
 
 pub fn destroyPublicKey(pk: *PublicKey) void {
-    // secureZero(u8, pk.t); // Zero out the sensitive polynomial t
-    //pk.arena.deinit();  // Free the memory occupied by t (and the arena itself)
-    for (pk.t) |poly| { // Iterate over the *k* polynomials
-        pk.allocator.free(poly); // Free the memory for each polynomial
-    }
-    pk.allocator.free(pk.t); // Free the outer slice	
-	pk.allocator.free(pk.rho); // Free the memory for each polynomial
-	
+	pk.allocator.free(pk.t); // Free the memory for each polynomial
+	pk.allocator.free(pk.rho); // Free the memory for each polynomial	
 }
 
 const expectError = std.testing.expectError;

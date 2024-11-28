@@ -38,8 +38,9 @@ const KeyPair = struct {
 };
 
 fn compress(comptime pd: params.ParamDetails, value: u16, bits: u8) u16 {
-    const numerator = @as(u32, @intCast(1 << bits)); //2^bits; use shifts as multiply by power of 2
-    const result = @as(u16, @intCast((numerator * value) / pd.q)); // Integer division, rounds down
+	const n_a: u5 = @intCast(@as(u8, bits));
+    const numerator = @as(u32, 1) << @as(u5, n_a);
+    const result = @as(u16, @intCast((numerator * value) / pd.q));
     return result;
 }
 
@@ -202,7 +203,7 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     const arena_allocator = arena.allocator();
 
     // 2. Encode message as a polynomial
-    var m = try utils.bytesToPolynomial(pd, message);
+    const m = try utils.bytesToPolynomial(pd, message);
 
     // 3. Generate y, e1, and e2 using CBD
     //var y = try cbd.samplePolyCBD(pd, allocator);
@@ -297,20 +298,21 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 
     // perform ntt on publicKey_t and m
 
-    var publicKey_t_hat = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.k);
-    defer allocator.free(publicKey_t_hat);
-	// @memcpy(publicKey_t_hat, publicKey_t.ptr);
-	for (0..pd.n) |j| {
-		publicKey_t_hat[j] = publicKey_t;
+	var publicKey_t_hat = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.k);
+	defer allocator.free(publicKey_t_hat);
+	for (0..pd.k) |i| {
+		for (0..pd.n) |j| {
+			publicKey_t_hat[i][j] = publicKey_t[j];
+		}
 	}
-	
-
-    for (0..pd.k) |i| ntt(pd, &publicKey_t_hat[i]);
 
     var m_hat: ntt.RqTq(pd) = undefined;
 	@memset(&m_hat, 0);
-    @memcpy(&m_hat, &m);
-    ntt(pd, &m_hat);
+    for (0..pd.n) |i| {
+		m_hat[i] = m[i];
+	}
+    
+	ntt.ntt(pd, &m_hat, zetas);
 
     var v_hat: ntt.RqTq(pd) = undefined;
 	@memset(&v_hat, 0);
@@ -320,41 +322,54 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 		@memset(&temp_poly, 0);
 
         for (0..pd.n) |k| {
-            temp_poly[k] = @as(u16, @mod(@as(u32, publicKey_t_hat[j][k]) * @as(u32, y_hat[j][k]), pd.q));
+			const v_hat_a: u16 = @intCast(@mod(@as(u32, publicKey_t_hat[j][k]) * @as(u32, y_hat[j][k]), pd.q));
+            temp_poly[k] = @as(u16, v_hat_a);
         }
 
         for (0..pd.n) |k| {
-            v_hat[k] = @as(u16, @mod(@as(u32, v_hat[k]) + @as(u32, temp_poly[k]), pd.q));
+			const v_hat_b: u16 = @intCast(@mod(@as(u32, v_hat[k]) + @as(u32, temp_poly[k]), pd.q));
+            v_hat[k] = @as(u16, v_hat_b);
         }
     }
 
     for (0..pd.n) |k| {
-        v_hat[k] = @as(u16, @mod(@as(u32, v_hat[k]) + @as(u32, e2[k]), pd.q));
-        v_hat[k] = @as(u16, @mod(@as(u32, v_hat[k]) + @as(u32, m_hat[k]), pd.q));
+		const v_hat_c: u16 = @intCast(@mod(@as(u32, v_hat[k]) + @as(u32, e2[k]), pd.q));
+        v_hat[k] = @as(u16, v_hat_c);
+		const v_hat_d: u16 = @intCast(@mod(@as(u32, v_hat[k]) + @as(u32, m_hat[k]), pd.q));
+        v_hat[k] = @as(u16, v_hat_d);
     }
 
-    var v = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.n);
+    const v = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.n);
     ntt.nttInverse(pd, &v_hat, zetas);
-    @memcpy(std.mem.asBytes(&v), std.mem.asBytes(&v_hat));
+	
+	for (0..pd.n) |i| {
+		v[i] = v_hat;
+	}
+	allocator.free(v);
+
 
     // Compress and encode u and v
-    var c1 = try allocOrError(std.heap.page_allocator, u8, pd.k * pd.n * pd.du / 8);
+    const c1 = try allocOrError(std.heap.page_allocator, u8, pd.k * pd.n * pd.du / 8);
     defer allocator.free(c1);
 
-    var c2 = try allocOrError(std.heap.page_allocator, u8, pd.n * pd.dv / 8);
+    const c2 = try allocOrError(std.heap.page_allocator, u8, pd.n * pd.dv / 8);
     defer allocator.free(c2);
 
     // COMPRESSION AND ENCODING (using constant-time operations where appropriate)
     for (0..pd.k) |i| {
         for (0..pd.n) |j| {
             const compressed_u = compress(pd, u[i][j], pd.du); // Implement compress function
-            std.mem.writeIntLittle(u16, c1[(i * pd.n + j) * 2 .. (i * pd.n + j + 1) * 2], compressed_u);
+			var two_bytes: [2]u8 = .{ c1[(i * pd.n + j) * 2], c1[(i * pd.n + j + 1) * 2] };
+            std.mem.writeInt(u16, &two_bytes, compressed_u, .little);
         }
     }
-    for (0..pd.n) |j| {
-        const compressed_v = compress(pd, v[j], pd.dv);
-        std.mem.writeIntLittle(u16, c2[j * 2 .. (j + 1) * 2], compressed_v);
-    }
+	for (0..pd.k) |i| {
+		for (0..pd.n) |j| {
+			const compressed_v = compress(pd, v[i][j], pd.dv);
+			var two_bytes: [2]u8 = .{ c2[j * 2], c2[(j + 1) * 2 ] };
+			std.mem.writeInt(u16, &two_bytes, compressed_v, .little);
+		}
+	}
     var ciphertext = try allocOrError(std.heap.page_allocator, u8, c1.len + c2.len);
     defer allocator.free(ciphertext);
     @memcpy(ciphertext, c1);

@@ -166,14 +166,6 @@ graph LR
     kat_vectors_768 --> kpke_test
     kat_vectors_1024 --> mlkem_test
     kat_vectors_1024 --> kpke_test
-
-    style example fill:#010101,stroke:#00527C,stroke-width:2px,color:#f0f0f0
-    style Tests fill:#fafafa,stroke:#5C258D,stroke-width:1px,color:#f0f0f0
-    style Core fill:#fafafa,stroke:#5C258D,stroke-width:1px, color:#f0f0f0
-    style SC fill:#fafafa,stroke:#00527C,stroke-width:1px,color:#f0f0f0
-    style TV fill:#fafafa,stroke:#00527c,stroke-width:1px,color:#f0f0f0
-
-    linkStyle default stroke-width:2px,stroke:#030303
 ```
 
 ## Building

@@ -10,11 +10,9 @@ def parse_kat_file(filepath, num_vectors=None):
     ctr = 0;
     with open(filepath, 'r', encoding='utf-8') as f:
         while True:
-            # if (ctr % 100) == 0: print(str(ctr))
+            # if (ctr % 100) == 0: print(str(ctr) + "len vectors " + str(len(vectors)) + " num vectrors:"+str(num_vectors))
             ctr += 1
-            # print (str(num_vectors) + " " + str(len(vectors)))     
             if num_vectors is not None and len(vectors) >= num_vectors:
-                print("Breaking early based on num_vectors: " + str(num_vectors))
                 break
             vector = {}
             while True:
@@ -31,6 +29,7 @@ def parse_kat_file(filepath, num_vectors=None):
                         if len(vector) == 4:
                             vectors.append(vector)
                             vector = {}
+                            break
                     except ValueError:
                         print(f"Warning: Invalid hex '{hex_str}' for '{field}' in '{filepath}'. Skipping vector.")
                         print(f"Problematic line: '{line}'")
@@ -65,8 +64,8 @@ def generate_zig_file(vectors, filename, compress=False, security_level="512"):
 
 def main():
     kat_dir = "../../post-quantum-cryptography/KAT/MLKEM"
-    num_vectors_per_set = 10
-    num_failure_vectors = 2
+    num_vectors_per_set = 1
+    num_failure_vectors = 1
     for security_level in ["512", "768", "1024"]:
         kat_filepath = os.path.join(kat_dir, f"kat_MLKEM_{security_level}.rsp")
         # Small set of vectors

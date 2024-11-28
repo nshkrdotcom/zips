@@ -46,7 +46,7 @@ fn allocOrError(allocator: *std.mem.Allocator, comptime T: type, size: usize) Er
 
 // K-PKE Key Generation
 pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!struct { PublicKey, PrivateKey } {
-    var arena = std.heap.ArenaAllocator.init(allocator) catch return Error.AllocationFailure;
+    var arena = try std.heap.ArenaAllocator.init(allocator) catch return Error.AllocationFailure;
     defer arena.deinit();
     const arena_allocator = arena.allocator();
 
@@ -395,7 +395,7 @@ test "k-pke encrypt and decrypt are inverses" {
     const ciphertext = try encrypt(pd, pk, message, allocator);
     defer allocator.free(ciphertext);
 
-    const decrypted = try decrypt(pd, sk, ciphertext, allocator); // Fix allocator type
+    const decrypted = try decrypt(pd, sk, ciphertext, &allocator); // Fix allocator type
 
     try std.testing.expectEqualSlices(u8, message, decrypted);
 }

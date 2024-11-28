@@ -39,7 +39,7 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 
 // ML-KEM Encapsulation
 pub fn encaps(comptime pd: params.ParamDetails, pk: PublicKey, allocator: mem.Allocator) Error!EncapsResult {
-    var arena = std.heap.ArenaAllocator.init(allocator) catch return Error.AllocationFailure;
+    var arena = try std.heap.ArenaAllocator.init(allocator) catch return Error.AllocationFailure;
     errdefer arena.deinit();
     const arena_allocator = arena.allocator();
 

@@ -6,25 +6,13 @@ const Error = @import("error.zig").Error;
 pub const RandomnessError = Error.RandomnessFailure;
 
 pub fn generateRandomBytes(buffer: []u8) !void {
-    // crypto.random doesn't have an error return.  We need to handle potential (rare) failure.
-    if (std.crypto.random == null) { // Fix comparison
-        return RandomnessError;
-    }
-    std.crypto.random(buffer);
-}
-
-// Optional explicit initialization
-pub fn init() !void {
-    // Remove this function as std.crypto.init() does not exist
+    std.crypto.random.bytes(buffer);
 }
 
 test "generate random bytes fills buffer" {
-    try init(); // Initialize CSPRNG in tests as well
-
     var buffer: [32]u8 = undefined;
     try generateRandomBytes(&buffer); // Now handles potential errors
-    std.testing.expect(buffer.len == 32);
-
+    try std.testing.expectEqual(@as(usize, 32), buffer.len);
     // Simple check (more robust statistical tests could be added)
     var allZeroes = true;
     for (buffer) |byte| {
@@ -33,5 +21,5 @@ test "generate random bytes fills buffer" {
             break;
         }
     }
-    std.testing.expect(!allZeroes);
+    try std.testing.expect(!allZeroes);
 }

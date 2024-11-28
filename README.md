@@ -115,6 +115,7 @@ graph LR
     kem --> mlkem
     kem --> params
     mlkem --> kpke
+    mlkem --> ntt
     mlkem --> params
     kpke --> ntt
     kpke --> cbd

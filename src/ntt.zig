@@ -22,7 +22,7 @@ pub fn precomputeZetas(comptime pd: params.ParamDetails, allocator: std.mem.Allo
     const zetas = try allocator.alloc(u16, pd.n / 2);
     for (zetas, 0..) |*zeta, i| {
 		const zeta_i = @as(u8, @intCast(i + 1));
-        zeta.* = utils.computeZeta(zeta_i, 1);  // TODO: check param 2
+        zeta.* = utils.computeZeta(pd, zeta_i);  // TODO: check param 2
     }
     return zetas;
 }

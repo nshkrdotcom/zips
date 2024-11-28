@@ -31,7 +31,7 @@ pub const Ciphertext = []u8; // Ciphertext is a byte slice
 pub const SharedSecret = [32]u8;
 
 // Key Generation
-pub fn keygen(comptime params: Params, allocator: *std.mem.Allocator) Error!KeyPair {
+pub fn keygen(comptime params: Params, allocator: std.mem.Allocator) Error!KeyPair {
     return try mlkem.keygen(params.get(), allocator); // Fix parameter type
 }
 
@@ -171,13 +171,13 @@ test "benchmark mlkem keygen" {
     const pd = Params.kem768; // Fix parameter type
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    var allocator = gpa.allocator();
 
     var timer = try std.time.Timer.start();
 
     var i: usize = 0;
     while (i < 1000) : (i += 1) { // Benchmark over 1000 iterations
-        const keypair = try keygen(pd, &allocator);
+        var keypair = try keygen(pd, allocator);
         destroyPrivateKey(&keypair.private_key);
         destroyPublicKey(&keypair.public_key);
     }

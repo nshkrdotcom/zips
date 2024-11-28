@@ -79,14 +79,14 @@ const expectEqual = std.testing.expectEqual;
 
 test "ntt and nttInverse are inverses" {
     const pd = params.Params.kem768.get();
-    var f = try allocOrError(std.heap.page_allocator, RqTq(pd), pd.n);
-    defer std.heap.page_allocator.free(f);
+    const f = try allocOrError(std.heap.page_allocator, RqTq(pd), pd.n);
+    std.heap.page_allocator.free(f);
     // ... rest of the test
 }
 
 test "ntt and nttInverse work with zero array" {
     const pd = params.Params.kem768.get();
-    var f = try allocOrError(std.heap.page_allocator, RqTq(pd), pd.n);
-    defer std.heap.page_allocator.free(f);
+    const f = try allocOrError(std.heap.page_allocator, RqTq(pd), pd.n);
+    std.heap.page_allocator.free(f);
     // ... rest of the test
 }

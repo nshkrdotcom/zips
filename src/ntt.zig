@@ -66,14 +66,18 @@ pub fn nttInverse(comptime pd: params.ParamDetails, f_hat: *RqTq(pd), zetas: []c
 
             while (j < start + len) : (j += 1) {
                 const t = f[j];
-                f[j] = @as(u16, @mod(@as(u32, t) + @as(u32, f[j + len]), pd.q));
-                f[j + len] = @as(u16, @mod(@as(u32, zeta) * @as(u32, @mod(@as(i32, f[j + len]) - @as(i32, t) + pd.q, pd.q)), pd.q));
+				const j_a: u16 = @intCast(@mod(@as(u32, t) + @as(u32, f[j + len]), pd.q));               
+                f[j] = @as(u16, j_a);
+				const j_bb: u32 = @intCast(@mod(@as(i32, f[j + len]) - @as(i32, t) + pd.q, pd.q));
+				const j_b: u16 = @intCast(@mod(@as(u32, zeta) * @as(u32, j_bb), pd.q));
+                f[j + len] = @as(u16, j_b);
             }
         }
     }
     const n_inverse = utils.computeNInverse(pd.n, pd.q);
     for (0..pd.n) |j| {
-        f[j] = @as(u16, @mod(@as(u32, f[j]) * @as(u32, n_inverse), pd.q));
+		const j_a: u16 = @intCast(@mod(@as(u32, f[j]) * @as(u32, n_inverse), pd.q));
+        f[j] = @as(u16, j_a);
     }
     f_hat.* = f;
 }
@@ -82,15 +86,34 @@ pub fn nttInverse(comptime pd: params.ParamDetails, f_hat: *RqTq(pd), zetas: []c
 const expectEqual = std.testing.expectEqual;
 
 test "ntt and nttInverse are inverses" {
-    const pd = params.Params.kem768.get();
-    const f = try allocOrError(std.heap.page_allocator, RqTq(pd), pd.n);
-    std.heap.page_allocator.free(f);
-    // ... rest of the test
+    const pd = comptime params.Params.kem768.get();
+    var gpa = std.testing.allocator;
+	var f: [pd.n]u16 = undefined;
+	for (0..pd.n) |i| {
+		f[i] = @intCast(i % pd.q);
+	}
+    const zetas = try precomputeZetas(pd, gpa);
+    defer gpa.free(zetas);
+	var f_copy: [pd.n]u16 = undefined;
+	@memcpy(&f_copy, &f);
+    ntt(pd, &f_copy, zetas);
+    nttInverse(pd, &f_copy, zetas);
+    try expectEqual(f, f_copy);
 }
 
+
 test "ntt and nttInverse work with zero array" {
-    const pd = params.Params.kem768.get();
-    const f = try allocOrError(std.heap.page_allocator, RqTq(pd), pd.n);
-    std.heap.page_allocator.free(f);
-    // ... rest of the test
+    const pd = comptime params.Params.kem768.get();
+    var gpa = std.testing.allocator;
+	var f: [pd.n]u16 = undefined;
+	for (0..pd.n) |i| {
+		f[i] = 0;
+	}
+    const zetas = try precomputeZetas(pd, gpa);
+    defer gpa.free(zetas);
+	var f_copy: [pd.n]u16 = undefined;
+	@memcpy(&f_copy, &f);
+    ntt(pd, &f_copy, zetas);
+    nttInverse(pd, &f_copy, zetas);
+    try expectEqual(f, f_copy);
 }

@@ -140,10 +140,10 @@ pub fn decodePublicKey(_: params.ParamDetails, pk_bytes: []const u8, allocator: 
     errdefer arena.deinit(); // Defer arena deallocation
     const publicKey_t = try arena.allocator().alloc(u8, t.len);
     errdefer arena.allocator().free(publicKey_t);
-    std.mem.copy(u8, publicKey_t, t);
+    @memcpy(publicKey_t, t);
     const rho = try arena.allocator().alloc(u8, 32); // Allocate for rho in the arena
     errdefer arena.allocator().free(rho);
-    std.mem.copy(u8, rho, rho_src); // Copy the rho data
+    @memcpy(rho, rho_src); // Copy the rho data
     return .{ .t = publicKey_t, .rho = rho, .arena = &arena };
 }
 
@@ -168,7 +168,7 @@ pub fn decodeCiphertext(comptime pd: params.ParamDetails, ct_bytes: []const u8, 
     errdefer arena.deinit();
     const ct = try arena.allocator().alloc(u8, ct_bytes.len);
     errdefer arena.allocator().free(ct);
-    std.mem.copy(u8, ct, ct_bytes);
+    @memcpy(ct, ct_bytes);
     return ct;
 }
 

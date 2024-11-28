@@ -55,9 +55,8 @@ pub fn encaps(comptime pd: params.ParamDetails, pk: PublicKey, allocator: mem.Al
     var hash_input = try arena_allocator.alloc(u8, hash_input_size);
     defer arena_allocator.free(hash_input);
     errdefer secureZero(u8, hash_input);
-    std.mem.copy(u8, hash_input, &m);
-    //std.mem.copy(u8, hash_input[0..m_prime.len], m_prime); // m_prime is already a slice
-    std.mem.copy(u8, hash_input[32..], pk.t);
+    @memcpy(hash_input, &m);
+    @memcpy(hash_input[32..], pk.t);
     crypto.hash.sha3.Sha3_512.hash(hash_input, K_r, .{}) catch return Error.RandomnessFailure;
     const K = K_r[0..32].*;
     _ = K_r[32..]; // Explicitly mark r as unused to suppress unused variable warning
@@ -67,7 +66,7 @@ pub fn encaps(comptime pd: params.ParamDetails, pk: PublicKey, allocator: mem.Al
     defer arena_allocator.free(c);
     const ciphertext = try arena_allocator.alloc(u8, c.len);
     errdefer arena_allocator.free(ciphertext);
-    std.mem.copy(u8, ciphertext, c);
+    @memcpy(ciphertext, c);
     return .{
         .ciphertext = ciphertext,
         .shared_secret = K,
@@ -94,7 +93,7 @@ pub fn decaps(comptime pd: params.ParamDetails, sk: PrivateKey, ct: Ciphertext, 
     var hash_input = try arena_allocator.alloc(u8, hash_input_size);
     defer arena_allocator.free(hash_input);
     errdefer secureZero(u8, hash_input);
-    std.mem.copy(u8, hash_input[0..32], m_prime); // Fix std.mem.copy usage
+    @memcpy(hash_input[0..32], m_prime);
     const publicKey = blk: {
         const key_pair = try kpke.keygen(pd, allocator);
         defer kpke.destroyPublicKey(&key_pair.publicKey);
@@ -115,7 +114,7 @@ pub fn decaps(comptime pd: params.ParamDetails, sk: PrivateKey, ct: Ciphertext, 
     // 5. Return K' if c == c', otherwise derive K' from a hash of c
     var K: [32]u8 = undefined;
     if (sameCiphertexts) {
-        std.mem.copy(u8, &K, &K_prime);
+        @memcpy(&K, &K_prime);
     } else {
         try crypto.random(&K);
     }

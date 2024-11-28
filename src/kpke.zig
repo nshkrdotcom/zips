@@ -240,11 +240,11 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     defer allocator.free(publicKey_t_hat);
     std.mem.copy(ntt.RqTq(pd), publicKey_t_hat, &publicKey_t);
 
-    for (0..pd.k) |i| ntt.ntt(pd, &publicKey_t_hat[i]);
+    for (0..pd.k) |i| ntt(pd, &publicKey_t_hat[i]);
 
     var m_hat = ntt.RqTq(pd){};
     std.mem.copy(ntt.RqTq(pd), &m_hat, &m);
-    ntt.ntt(pd, &m_hat);
+    ntt(pd, &m_hat);
 
     var v_hat = ntt.RqTq(pd){};
 

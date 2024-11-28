@@ -9,9 +9,9 @@ const Error = @import("error.zig").Error;
 const mem = std.mem;
 
 // Define ML-KEM key and ciphertext types
-pub const PublicKey = kpke.PublicKey; // Reuse kpke's PublicKey
-pub const PrivateKey = kpke.PrivateKey; // Reuse kpke's PrivateKey
-pub const Ciphertext = []u8; // Ciphertext will be a byte array
+pub const PublicKey = kpke.PublicKey;
+pub const PrivateKey = kpke.PrivateKey;
+pub const Ciphertext = kpke.Ciphertext;
 
 const KeyPair = struct {
     public_key: PublicKey,
@@ -33,54 +33,55 @@ inline fn secureZero(comptime T: type, slice: []volatile T) void {
 // Key Generation
 pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!KeyPair {
     const key_pair = try kpke.keygen(pd, allocator);
-    return .{ .public_key = key_pair[0], .private_key = key_pair[1] };
-    //return .{ .public_key = key_pair.publicKey, .private_key = key_pair.privateKey };
+    return .{ .public_key = key_pair.publicKey, .private_key = key_pair.privateKey };
 }
 
 // ML-KEM Encapsulation
 pub fn encaps(comptime pd: params.ParamDetails, pk: PublicKey, allocator: mem.Allocator) Error!EncapsResult {
-    var arena = try std.heap.ArenaAllocator.init(allocator) catch return Error.AllocationFailure;
-    errdefer arena.deinit();
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
     const arena_allocator = arena.allocator();
 
     // 1. Generate random bytes m
     var m: [32]u8 = undefined;
     rng.generateRandomBytes(&m) catch return Error.RandomnessFailure;
-    defer secureZero(u8, &m); // Securely zero out m after use
+    defer secureZero(u8, &m);
 
-    // 2. Compute K and r (using SHAKE256 as specified in FIPS 203)
+    // 2. Compute K and r (using SHA3-512)
     var K_r: [64]u8 = undefined;
     const hash_input_size = 32 + pk.t.len;
-    if (hash_input_size > 50000) return error.InvalidInput; // prevent massive stack allocations.
-    var hash_input = try arena_allocator.alloc(u8, hash_input_size);
-    defer arena_allocator.free(hash_input);
+    if (hash_input_size > 50000) return error.InvalidInput;
+	const hash_input = arena_allocator.alloc(u8, hash_input_size) catch |err| {
+		std.debug.print("Allocation failed: {}\n", .{err});  // Or other error handling
+		return Error.AllocationFailure; // Or return the error, etc.
+	};
+	defer arena_allocator.free(hash_input);
     errdefer secureZero(u8, hash_input);
     @memcpy(hash_input, &m);
     @memcpy(hash_input[32..], pk.t);
-    crypto.hash.sha3.Sha3_512.hash(hash_input, K_r, .{}) catch return Error.RandomnessFailure;
+    crypto.hash.sha3.Sha3_512.hash(hash_input, &K_r, .{}); 
     const K = K_r[0..32].*;
-    _ = K_r[32..]; // Explicitly mark r as unused to suppress unused variable warning
 
     // 3. Encrypt m using K-PKE
-    const c = try kpke.encrypt(pd, pk, m, arena_allocator);
+    const c = try kpke.encrypt(pd, pk, &m, arena_allocator); // Pass arena_allocator
     defer arena_allocator.free(c);
     const ciphertext = try arena_allocator.alloc(u8, c.len);
-    errdefer arena_allocator.free(ciphertext);
+    defer arena_allocator.free(ciphertext);
     @memcpy(ciphertext, c);
-    return .{
+    return EncapsResult{
         .ciphertext = ciphertext,
         .shared_secret = K,
     };
 }
 
 // ML-KEM Decapsulation
-pub fn decaps(comptime pd: params.ParamDetails, sk: PrivateKey, ct: Ciphertext, allocator: mem.Allocator) Error![32]u8 {
-    var arena = std.heap.ArenaAllocator.init(allocator) catch return Error.AllocationFailure;
-    errdefer arena.deinit();
-    const arena_allocator = arena.allocator();
+pub fn decaps(comptime pd: params.ParamDetails, pk: PublicKey, sk: PrivateKey, ct: Ciphertext, allocator: mem.Allocator) Error![32]u8 {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();  
 
     // 1. Decrypt the ciphertext ct under sk to obtain m'
-    const m_prime = try kpke.decrypt(pd, sk, ct, &arena_allocator);
+    const m_prime = try kpke.decrypt(pd, sk, ct, &arena_allocator, &arena);
     defer {
         secureZero(u8, m_prime);
         arena_allocator.free(m_prime);
@@ -89,20 +90,20 @@ pub fn decaps(comptime pd: params.ParamDetails, sk: PrivateKey, ct: Ciphertext, 
     // 2. Compute K' from m'
     var K_prime_r_prime: [64]u8 = undefined;
     const hash_input_size = 32 + sk.s.len * @sizeOf(u16);
-    if (hash_input_size > 50000) return error.InvalidInput; // prevent massive stack allocations.
-    var hash_input = try arena_allocator.alloc(u8, hash_input_size);
+    if (hash_input_size > 50000) return error.InvalidInput;
+    const hash_input = arena_allocator.alloc(u8, hash_input_size) catch |err| {
+        std.debug.print("Hash input allocation failed: {}\n", .{err});
+        return Error.AllocationFailure;
+    };
     defer arena_allocator.free(hash_input);
     errdefer secureZero(u8, hash_input);
     @memcpy(hash_input[0..32], m_prime);
-    const publicKey = blk: {
-        const key_pair = try kpke.keygen(pd, allocator);
-        defer kpke.destroyPublicKey(&key_pair.publicKey);
-        break :blk key_pair.publicKey;
-    };
-    crypto.hash.sha3.Sha3_256.hash(publicKey.t, hash_input[32..], .{}) catch return Error.RandomnessFailure;
-    crypto.hash.sha3.Sha3_512.hash(hash_input, K_prime_r_prime, .{}) catch return Error.RandomnessFailure;
+    const publicKey = pk;
+	var hash_output: [32]u8 = undefined;  // Create a separate output array
+    crypto.hash.sha3.Sha3_256.hash(publicKey.t, &hash_output, .{});
+	//@memcpy(hash_input[32..], &hash_output); // Copy to hash_input if necessary
+    crypto.hash.sha3.Sha3_512.hash(hash_input, &K_prime_r_prime, .{}); // Fix: &K_prime_r_prime
     const K_prime = K_prime_r_prime[0..32].*;
-    _ = K_prime_r_prime[32..];
 
     // 3. Re-encrypt m' under pk derived from sk to obtain c'
     const c_prime = try kpke.encrypt(pd, publicKey, m_prime, arena_allocator);
@@ -111,12 +112,12 @@ pub fn decaps(comptime pd: params.ParamDetails, sk: PrivateKey, ct: Ciphertext, 
     // 4. Compare c and c' (constant-time comparison is crucial here)
     const sameCiphertexts = std.mem.eql(u8, ct, c_prime);
 
-    // 5. Return K' if c == c', otherwise derive K' from a hash of c
+    // 5. Return K' if c == c', otherwise derive K' from a hash of c (or other appropriate action)
     var K: [32]u8 = undefined;
     if (sameCiphertexts) {
         @memcpy(&K, &K_prime);
     } else {
-        try crypto.random(&K);
+        crypto.random.bytes(&K);
     }
     return K;
 }
@@ -153,7 +154,7 @@ test "mlkem encaps and decaps work" {
     var keypair = try keygen(pd, allocator);
     var encaps_result = try encaps(pd, keypair.public_key, allocator);
     defer destroyCiphertext(encaps_result.ciphertext);
-    const ss = try decaps(pd, keypair.private_key, encaps_result.ciphertext, allocator);
+    const ss = try decaps(pd, keypair.public_key, keypair.private_key, encaps_result.ciphertext, allocator);
     try std.testing.expectEqualSlices(u8, &encaps_result.shared_secret, &ss);
     destroyPrivateKey(&keypair.private_key);
     destroyPublicKey(&keypair.public_key);

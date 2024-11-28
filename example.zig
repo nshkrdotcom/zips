@@ -14,11 +14,11 @@ pub fn main() !void {
     // 2. Generate key pair
     const keypair = try kem.keygen(param_set, allocator);
     defer {
-        kem.destroyPrivateKey(&keypair.privateKey);
-        kem.destroyPublicKey(&keypair.publicKey);
+        kem.destroyPrivateKey(&keypair.PrivateKey);
+        kem.destroyPublicKey(&keypair.PublicKey);
     }
-    const pk = keypair.publicKey;
-    const sk = keypair.privateKey;
+    const pk = keypair.PublicKey;
+    const sk = keypair.PrivateKey;
 
     // 3. Encapsulate
     const encapsulation = try kem.encaps(param_set, pk, allocator);
@@ -27,7 +27,7 @@ pub fn main() !void {
     const shared_secret = encapsulation.shared_secret;
 
     // 4. Decapsulate
-    const recovered_shared_secret = try kem.decaps(param_set, sk, ct, allocator);
+    const recovered_shared_secret = try kem.decaps(param_set, pk, sk, ct, allocator);
 
     if (!std.mem.eql(u8, shared_secret, recovered_shared_secret)) {
         std.debug.print("Error: Shared secrets do not match!\n", .{});

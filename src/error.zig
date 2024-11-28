@@ -14,6 +14,8 @@ pub const Error = error{
     AllocationFailure,
     InvalidInput,
     OutOfMemory,
+    EncryptionFailure,
+ 
 };
 
 // Optional custom error type if needed

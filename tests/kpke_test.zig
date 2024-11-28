@@ -10,7 +10,6 @@ const kat_vectors_512 = @import("vectors/kat_vectors_512_small.zig").kat_vectors
 const kat_vectors_768 = @import("vectors/kat_vectors_768_small.zig").kat_vectors_768;
 const kat_vectors_1024 = @import("vectors/kat_vectors_1024_small.zig").kat_vectors_1024;
 
-
 fn test_kpke_kats(comptime param_set: params.Params, kat_vectors: anytype) !void {
     const pd = param_set.get();
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -18,36 +17,35 @@ fn test_kpke_kats(comptime param_set: params.Params, kat_vectors: anytype) !void
     const allocator = gpa.allocator();
 
     for (kat_vectors) |kat| {
-        var publicKey = try utils.decodePublicKey(pd, kat.pk);
-        defer publicKey.arena.deinit();
-
-        var privateKey = try utils.decodePrivateKey(pd, kat.sk);
-        defer privateKey.arena.deinit();
-        var ciphertext = try utils.decodeCiphertext(pd, kat.ct);
-        defer ciphertext.arena.deinit();
-
-        const decryptedMessage = try kpke.decrypt(pd, privateKey, ciphertext, allocator);
-        defer allocator.free(decryptedMessage);
-
-        // The KAT msg field needs to be decoded to match the decrypted message format.
-        var decodedMsg = try utils.bytesToPolynomial(pd, kat.msg);
-
-        // Convert decodedMsg (polynomial) to bytes to match decryptedMessage format.
-        var msgBytes = try utils.polynomialToBytes(pd, &decodedMsg);
-        defer allocator.free(msgBytes);
-
-        try expectEqualSlices(u8, msgBytes, decryptedMessage); // Ensure decryptedMessage are equal to the original message
+        var arena = std.heap.ArenaAllocator.init(allocator); // Arena per KAT vector
+        defer arena.deinit();
 
 
-        var keypair = try kpke.keygen(pd, allocator);
+        var publicKey = try utils.decodePublicKey(pd, kat.pk, arena.allocator());
+        // No defer for publicKey.arena.deinit() needed; the loop's arena handles it.
+
+        var privateKey = try utils.decodePrivateKey(pd, kat.sk, arena.allocator());
+        // Similarly, no defer privateKey.arena.deinit() needed
+
+        var ciphertext = try utils.decodeCiphertext(pd, kat.ct, arena.allocator());
+        // No defer ciphertext.arena.deinit() needed
+
+        const decryptedMessage = try kpke.decrypt(pd, privateKey, ciphertext, &allocator, &arena);
+        defer arena.allocator().free(decryptedMessage);
+
+        var decodedMsg = try utils.bytesToPolynomial(pd, kat.msg, arena.allocator());  // Use arena
+
+        var msgBytes = try utils.polynomialToBytes(pd, &decodedMsg, arena.allocator()); // Use arena
+        // No defer allocator.free(msgBytes); the arena handles it
+
+        try expectEqualSlices(u8, msgBytes, decryptedMessage);
+
+        var keypair = try kpke.keygen(pd, allocator); // keygen uses its own arena internally
         defer kpke.destroyPrivateKey(&keypair.privateKey);
         defer kpke.destroyPublicKey(&keypair.publicKey);
 
-
-        // Encrypt the original message using the generated keypair
-        const encryptedMessage = try kpke.encrypt(pd, keypair.publicKey, kat.msg, allocator);
-        defer allocator.free(encryptedMessage);
-
+        const encryptedMessage = try kpke.encrypt(pd, keypair.PublicKey, kat.msg, arena.allocator());  // Use arena
+        defer arena.allocator().free(encryptedMessage);
         try expectEqualSlices(u8, encryptedMessage, ciphertext);
 
     }

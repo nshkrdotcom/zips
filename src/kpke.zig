@@ -20,8 +20,10 @@ pub const PublicKey = struct {
 
 pub const PrivateKey = struct {
     s: []u16,
-    arena: *std.heap.ArenaAllocator,
+    //arena: *std.heap.ArenaAllocator,
 };
+
+pub const Ciphertext = []u8; // Ciphertext will be a byte array
 
 inline fn secureZero(comptime T: type, slice: []volatile T) void {
     for (slice) |*elem| {
@@ -29,6 +31,11 @@ inline fn secureZero(comptime T: type, slice: []volatile T) void {
         asm volatile ("" ::: "memory"); // Prevent optimizations
     }
 }
+
+const KeyPair = struct {
+    publicKey: PublicKey,
+    privateKey: PrivateKey,
+};
 
 // Compress function (assumed to be implemented elsewhere)
 fn compress(comptime pd: params.ParamDetails, value: u16, bits: u8) u16 {
@@ -45,7 +52,7 @@ pub fn allocOrError(allocator: mem.Allocator, comptime T: type, size: usize) Err
 }
 
 // K-PKE Key Generation
-pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!struct { PublicKey, PrivateKey } {
+pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!KeyPair {
     var arena = std.heap.ArenaAllocator.init(allocator);
     errdefer arena.deinit();
     const arena_allocator = arena.allocator();
@@ -138,8 +145,11 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 
     // 7. Create PublicKey and PrivateKey structs
     const pk = PublicKey{ .t = encoded_t, .rho = rho };
-    const sk = PrivateKey{ .s = s, .arena = &arena };
-    return .{ pk, sk };
+    const sk = PrivateKey{ .s = s };//, .arena = &arena };
+    return KeyPair{ 
+		.publicKey = pk, 
+		.privateKey = sk 
+	};
 }
 
 // K-PKE Encryption
@@ -286,22 +296,16 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     defer allocator.free(ciphertext);
     std.mem.copy(u8, ciphertext, c1);
     std.mem.copy(u8, ciphertext[c1.len..], c2);
-
     return ciphertext;
 }
 
 // K-PKE Decryption
-pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: []const u8, allocator: *mem.Allocator) Error![]u8 {
-    // Decode ciphertext
+pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Ciphertext, allocator: *const mem.Allocator, arena: *std.heap.ArenaAllocator) Error![]u8 {
     const u_bytes = ciphertext[0 .. pd.k * pd.n * pd.du / 8];
     const v_bytes = ciphertext[pd.k * pd.n * pd.du / 8 ..];
-
-    var u = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.k);
+	var u = try arena.allocator().alloc(ntt.RqTq(pd), pd.k); 
     defer allocator.free(u);
-
-    //var v = ntt.RqTq(pd){};
     var v = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.n);
-
     // Decode u
     for (0..pd.k) |i| {
         for (0..pd.n) |j| {
@@ -354,7 +358,7 @@ pub fn destroyPrivateKey(sk: *PrivateKey) void {
     // ... securely zero out and deallocate private key data
     // Securely zero out the private key polynomial
     secureZero(u16, sk.s);
-    sk.arena.deinit(); // Free all memory allocated by the arena, including sk.s
+    //sk.arena.deinit(); // Free all memory allocated by the arena, including sk.s
     // Zero out other sensitive data if needed
 }
 
@@ -379,18 +383,21 @@ test "k-pke encrypt and decrypt are inverses" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-    
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
     const result = try keygen(pd, allocator);
-    const pk = result[0];
-    var sk = result[1];
+    const pk = result.publicKey;
+    var sk = result.privateKey;
     defer destroyPrivateKey(&sk);
 
     const message = "this is my message";
-    const ciphertext = try encrypt(pd, pk, message, allocator);
-    defer allocator.free(ciphertext);
+    const ciphertext = try encrypt(pd, pk, message, arena.allocator());
+    defer arena.allocator().free(ciphertext);
 
-    var alloc = allocator;
-    const decrypted = try decrypt(pd, sk, ciphertext, &alloc);
+    const decrypted = try decrypt(pd, sk, ciphertext, &allocator, &arena); // Pass the arena
+    defer arena.allocator().free(decrypted); // Free decrypted using the arena allocator
 
     try std.testing.expectEqualSlices(u8, message, decrypted);
 }

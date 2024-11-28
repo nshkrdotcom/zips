@@ -41,8 +41,8 @@ pub fn encaps(comptime params: Params, pk: PublicKey, allocator: *std.mem.Alloca
 }
 
 // Decapsulation
-pub fn decaps(comptime params: Params, sk: PrivateKey, ct: Ciphertext, allocator: *std.mem.Allocator) Error!SharedSecret {
-    return try mlkem.decaps(params, sk, ct, allocator);
+pub fn decaps(comptime params: Params, pk: PublicKey, sk: PrivateKey, ct: Ciphertext, allocator: *std.mem.Allocator) Error!SharedSecret {
+    return try mlkem.decaps(params, pk, sk, ct, allocator);
 }
 
 // Secure Key Destruction
@@ -146,7 +146,7 @@ pub fn generateRandomBytes(buffer: []u8) !void {
 // var pk = try decodePublicKey(pd, kat.pk);
 // var sk = try decodePrivateKey(pd, kat.sk);
 // var ct = try decodeCiphertext(pd, kat.ct);
-// const ss = try mlkem.decaps(pd, sk, ct, allocator);
+// const ss = try mlkem.decaps(pd, pk, sk, ct, allocator);
 // try std.testing.expectEqualSlices(u8, kat.ss, &ss);
 //}
 

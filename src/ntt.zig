@@ -17,9 +17,45 @@ pub fn allocOrError(allocator: std.mem.Allocator, comptime T: type, size: usize)
     };
 }
 
+// Zetas are now precomputed at compile time
+pub const precomputed_zetas = blk: {
+    comptime var zetas_512: [params.Params.kem512.get().n / 2]u16 = undefined;
+    comptime var zetas_768: [params.Params.kem768.get().n / 2]u16 = undefined;
+    comptime var zetas_1024: [params.Params.kem1024.get().n / 2]u16 = undefined;
+
+    inline for (0..zetas_512.len) |i| {
+		const zeta_i = @as(u8, @intCast(i + 1));
+        zetas_512[i] = utils.computeZeta(params.Params.kem512.get(), zeta_i); // Calculate zeta at compile-time
+    }
+    inline for (0..zetas_768.len) |i| {
+		const zeta_i = @as(u8, @intCast(i + 1));
+        zetas_768[i] = utils.computeZeta(params.Params.kem768.get(), zeta_i); // Calculate zeta at compile-time
+    }
+
+    inline for (0..zetas_1024.len) |i| {
+		const zeta_i = @as(u8, @intCast(i + 1));
+        zetas_1024[i] = utils.computeZeta(params.Params.kem1024.get(), zeta_i); // Calculate zeta at compile-time
+    }
+
+    break :blk .{
+        .kem512 = zetas_512,
+        .kem768 = zetas_768,
+        .kem1024 = zetas_1024,
+    };
+};
+
+pub fn getZetas(comptime params: params.Params) []const u16 {
+    return switch (params) {
+        .kem512 => precomputed_zetas.kem512,
+        .kem768 => precomputed_zetas.kem768,
+        .kem1024 => precomputed_zetas.kem1024,
+    };
+}
+
 // Pre-compute zetas (This should be done only ONCE per parameter set)
 pub fn precomputeZetas(comptime pd: params.ParamDetails, allocator: std.mem.Allocator) ![]u16 {
-    const zetas = try allocator.alloc(u16, pd.n / 2);
+	const zetas = getZetas(pd);
+    //const zetas = try allocator.alloc(u16, pd.n / 2);
     for (zetas, 0..) |*zeta, i| {
 		const zeta_i = @as(u8, @intCast(i + 1));
         zeta.* = utils.computeZeta(pd, zeta_i);  // TODO: check param 2
@@ -28,7 +64,8 @@ pub fn precomputeZetas(comptime pd: params.ParamDetails, allocator: std.mem.Allo
 }
 
 // Forward NTT
-pub fn ntt(comptime pd: params.ParamDetails, f: *RqTq(pd), zetas: []const u16) void {
+pub fn ntt(comptime pd: params.ParamDetails, f: *RqTq(pd)) void {
+	const zetas = getZetas(pd);
     var f_hat = f.*; // operate in-place on f_hat
     var i: u8 = 1;
     var len: u32 = pd.n / 2;
@@ -53,7 +90,8 @@ pub fn ntt(comptime pd: params.ParamDetails, f: *RqTq(pd), zetas: []const u16) v
 }
 
 // Inverse NTT
-pub fn nttInverse(comptime pd: params.ParamDetails, f_hat: *RqTq(pd), zetas: []const u16) void {
+pub fn nttInverse(comptime pd: params.ParamDetails, f_hat: *RqTq(pd)) void {
+	const zetas = getZetas(pd);
     var f = f_hat.*;
     var i: u8 = pd.n / 2 - 1;
     var len: u32 = 2;
@@ -96,8 +134,8 @@ test "ntt and nttInverse are inverses" {
     defer gpa.free(zetas);
 	var f_copy: [pd.n]u16 = undefined;
 	@memcpy(&f_copy, &f);
-    ntt(pd, &f_copy, zetas);
-    nttInverse(pd, &f_copy, zetas);
+    ntt(pd, &f_copy);
+    nttInverse(pd, &f_copy);
     try expectEqual(f, f_copy);
 }
 
@@ -114,6 +152,6 @@ test "ntt and nttInverse work with zero array" {
 	var f_copy: [pd.n]u16 = undefined;
 	@memcpy(&f_copy, &f);
     ntt(pd, &f_copy, zetas);
-    nttInverse(pd, &f_copy, zetas);
+    nttInverse(pd, &f_copy);
     try expectEqual(f, f_copy);
 }

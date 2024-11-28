@@ -13,10 +13,6 @@ pub fn main() !void {
 
     // 2. Generate key pair
     const keypair = try kem.keygen(param_set, allocator);
-    defer {
-        //kem.destroyPrivateKey(&keypair.PrivateKey);
-        kem.destroyPublicKey(&keypair.PublicKey);
-    }
     const pk = keypair.PublicKey;
     const sk = keypair.PrivateKey;
 

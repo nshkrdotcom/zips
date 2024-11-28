@@ -31,16 +31,11 @@ pub fn main() !void {
 
     // 2. Generate key pair
     const keypair = try kem.keygen(param_set, allocator);
-    defer {
-        //kem.destroyPrivateKey(&keypair.PrivateKey);
-        kem.destroyPublicKey(&keypair.PublicKey);
-    }
     const pk = keypair.PublicKey;
     const sk = keypair.PrivateKey;
 
     // 3. Encapsulate
     const encapsulation = try kem.encaps(param_set, pk, allocator);
-    defer kem.destroyCiphertext(&encapsulation.ciphertext);
     const ct = encapsulation.ciphertext;
     const shared_secret = encapsulation.shared_secret;
 

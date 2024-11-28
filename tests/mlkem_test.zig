@@ -30,8 +30,6 @@ fn test_kats(comptime param_set: params.Params, kat_vectors: anytype) !void {
         try expectEqualSlices(u8, kat.ss, &sharedSecret);
         // Test keygen and encapsulate too for the same KAT since you're not doing key validation tests
         var generatedKeyPair = try kem.keygen(param_set, allocator);
-        //defer kem.destroyPrivateKey(&generatedKeyPair.PrivateKey);
-        defer kem.destroyPublicKey(&generatedKeyPair.PublicKey);
         var encapsResult = try kem.encaps(param_set, publicKey, allocator);
         try expectEqual(kat.ct.len, encapsResult.ciphertext.len);
         try expectEqualSlices(u8, kat.ct, encapsResult.ciphertext);

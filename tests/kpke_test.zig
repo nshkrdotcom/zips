@@ -33,8 +33,6 @@ fn test_kpke_kats(comptime param_set: params.Params, kat_vectors: anytype) !void
         try expectEqualSlices(u8, msgBytes, decryptedMessage);
 
         var keypair = try kpke.keygen(pd, allocator); // keygen uses its own arena internally
-        //defer kpke.destroyPrivateKey(&keypair.privateKey);
-        defer kpke.destroyPublicKey(&keypair.publicKey);
 
         const encryptedMessage = try kpke.encrypt(pd, keypair.PublicKey, kat.msg, arena.allocator());  // Use arena
         defer arena.allocator().free(encryptedMessage);

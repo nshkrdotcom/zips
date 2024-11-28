@@ -49,15 +49,6 @@ pub fn decaps(comptime params: Params, pk: PublicKey, sk: PrivateKey, ct: Cipher
     return try mlkem.decaps(params, pk, sk, ct, allocator);
 }
 
-// Secure Key Destruction
-//pub fn destroyPrivateKey(sk: *PrivateKey) void {
-//    mlkem.destroyPrivateKey(sk);
-//}
-
-pub fn destroyPublicKey(pk: *PublicKey) void {
-    mlkem.destroyPublicKey(pk);
-}
-
 pub fn destroyCiphertext(ct: *Ciphertext) void {
     mlkem.destroyCiphertext(ct);
 }
@@ -182,8 +173,6 @@ test "benchmark mlkem keygen" {
     var i: usize = 0;
     while (i < 1000) : (i += 1) { // Benchmark over 1000 iterations
         var keypair = try keygen(pd, allocator);
-        //destroyPrivateKey(&keypair.private_key);
-        destroyPublicKey(&keypair.public_key);
     }
 
     const elapsed = timer.read();

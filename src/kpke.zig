@@ -78,7 +78,9 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
             seed[33] = @as(u8, @intCast(i));
             A_hat[i * pd.k + j] = blk: {
                 var result: ntt.RqTq(pd) = undefined;
-                std.mem.set(result[0..], 0);
+                for (result[0..]) |*item| {
+                    item.* = 0;
+                }
                 var counter: u32 = 0;
                 while (true) : (counter += 1) {
                     if (counter == 1000) return Error.RandomnessFailure; // reasonable upper bound per FIPS 203 recommendation.
@@ -181,7 +183,9 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
             seed[33] = @as(u8, @intCast(i));
             publicKey_A_hat[i * pd.k + j] = blk: {
                 var result: ntt.RqTq(pd) = undefined;
-                std.mem.set(result[0..], 0);
+                for (result[0..]) |*item| {
+                    item.* = 0;
+                }
                 var counter: u32 = 0;
 
                 while (true) : (counter += 1) {

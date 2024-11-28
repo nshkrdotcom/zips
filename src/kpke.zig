@@ -97,19 +97,17 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
     }
 
     // 4. Generate secret key s (using CBD)
-	//var s: [pd.k][pd.n]u16 = undefined;
-	var s = try arena_allocator.alloc([]u16, pd.k);
-    for (0..pd.k) |i| {
-        s[i] = try cbd.samplePolyCBD(pd, arena_allocator);
-    }
+	var s = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);	
+	for (0..pd.k) |i| {
+		s[i] = try cbd.samplePolyCBD(pd, arena_allocator);
+	}
 	// Free s
 
     // 5. Generate error vector e (using CBD)
-    //var e: [pd.k][pd.n]u16 = undefined;
-	var e = try arena_allocator.alloc([]u16, pd.k);
-    for (0..pd.k) |i| {
-        e[i] = try cbd.samplePolyCBD(pd, arena_allocator);
-    }
+	var e = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
+	for (0..pd.k) |i| {
+		e[i] = try cbd.samplePolyCBD(pd, arena_allocator);
+	}
 
 	// In keygen, precompute zetas
 	const zetas = try ntt.precomputeZetas(pd, arena_allocator);
@@ -117,10 +115,10 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 
     // 6. Compute t = As + e
     var t = try arena_allocator.alloc([]u16, pd.k);
-    var s_hat = try arena_allocator.alloc([]u16, pd.k);
+    var s_hat = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
     for (0..pd.k) |i| {
         ntt.ntt(pd, &s[i], zetas); // calculate ntt of s once instead of repeatedly
-        std.mem.copy(ntt.RqTq(pd), &s_hat[i], &s[i]);
+        @memcpy(&s_hat[i], &s[i]);
 		arena_allocator.free(s[i]);
     }
 	arena_allocator.free(s);
@@ -177,12 +175,16 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     defer allocator.free(publicKey_A_hat);
     var r_bytes: [32]u8 = undefined;
     try rng.generateRandomBytes(&r_bytes);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    errdefer arena.deinit();
+    const arena_allocator = arena.allocator();
 
     // 2. Encode message as a polynomial
     var m = try utils.bytesToPolynomial(pd, message);
 
     // 3. Generate y, e1, and e2 using CBD
-    var y = try cbd.samplePolyCBD(pd, allocator);
+    //var y = try cbd.samplePolyCBD(pd, allocator);
+	var y = try arena_allocator.alloc(ntt.RqTq(pd), pd.k);
     const e1 = try cbd.samplePolyCBD(pd, allocator);
     const e2 = try cbd.samplePolyCBD(pd, allocator);
 
@@ -237,7 +239,7 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 	
     for (0..pd.k) |i| ntt.ntt(pd, &y[i], zetas);
 
-    std.mem.copy(ntt.RqTq(pd), y_hat, y);
+    @memcpy(y_hat, y);
 
     for (0..pd.k) |i| {
         for (0..pd.k) |j| {
@@ -257,7 +259,7 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     defer allocator.free(u);
     for (0..pd.k) |i| {
         ntt.nttInverse(pd, &u_hat[i], zetas);
-        std.mem.copy(u8, std.mem.asBytes(&u[i]), std.mem.asBytes(&u_hat[i]));
+        @memcpy(std.mem.asBytes(&u[i]), std.mem.asBytes(&u_hat[i]));
     }
     // Compute v
     // t * y + e2 + encode(message)
@@ -266,12 +268,12 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 
     var publicKey_t_hat = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(publicKey_t_hat);
-    std.mem.copy(ntt.RqTq(pd), publicKey_t_hat, &publicKey_t);
+    @memcpy(publicKey_t_hat, &publicKey_t);
 
     for (0..pd.k) |i| ntt(pd, &publicKey_t_hat[i]);
 
     var m_hat = ntt.RqTq(pd){};
-    std.mem.copy(ntt.RqTq(pd), &m_hat, &m);
+    @memcpy(&m_hat, &m);
     ntt(pd, &m_hat);
 
     var v_hat = ntt.RqTq(pd){};
@@ -296,7 +298,7 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     //var v = ntt.RqTq(pd){};
     var v = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.n);
     ntt.nttInverse(pd, &v_hat, zetas);
-    std.mem.copy(u8, std.mem.asBytes(&v), std.mem.asBytes(&v_hat));
+    @memcpy(std.mem.asBytes(&v), std.mem.asBytes(&v_hat));
 
     // Compress and encode u and v
     var c1 = try allocOrError(std.heap.page_allocator, u8, pd.k * pd.n * pd.du / 8);
@@ -318,8 +320,8 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     }
     var ciphertext = try allocOrError(std.heap.page_allocator, u8, c1.len + c2.len);
     defer allocator.free(ciphertext);
-    std.mem.copy(u8, ciphertext, c1);
-    std.mem.copy(u8, ciphertext[c1.len..], c2);
+    @memcpy(ciphertext, c1);
+    @memcpy(ciphertext[c1.len..], c2);
     return ciphertext;
 }
 
@@ -331,18 +333,21 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Cip
     defer allocator.free(u);
     var v = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.n);
     // Decode u
-    for (0..pd.k) |i| {
-        for (0..pd.n) |j| {
-			const start_index = (i * pd.n + j) * 2;
-			u[i][j] = mem.readInt(u16, &u_bytes[start_index..start_index+2], .Little);
-        }
-    }
-
+	for (0..pd.k) |i| {
+		for (0..pd.n) |j| {
+				const start_index = (i * pd.n + j) * 2;
+				const two_bytes: [2]u8 = .{ u_bytes[start_index], u_bytes[start_index + 2] };
+				u[i][j] = mem.readInt(u16, &two_bytes, .little);
+		}
+	}
     // Decode v
-    for (0..pd.n) |j| {
-		const start_index = j * 2;
-        v[j] = mem.readInt(u16, &v_bytes[start_index..start_index+2], .Little);
-    }
+	for (0..pd.n) |j| {
+		for (0..256) |i| { 
+			const start_index = (j * 256 + i) * 2;
+			const two_bytes: [2]u8 = .{ v_bytes[start_index], v_bytes[start_index + 1] };
+			v[j][i] = mem.readInt(u16, &two_bytes, .little);
+		}
+	}
 
 	const zetas = sk.zetas;
 
@@ -350,14 +355,14 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Cip
     var s_hat = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(s_hat);
     for (0..pd.k) |i| {
-        std.mem.copy(ntt.RqTq(pd), &s_hat[i], &sk.s[i]);
+		@memcpy(&s_hat[i], sk.s[i]);
         ntt.ntt(pd, &s_hat[i], zetas);
     }
     var u_hat = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.k);
     defer allocator.free(u_hat);
     for (0..pd.k) |i| {
-        ntt.ntt(pd, &u[i], zetas);
-        std.mem.copy(ntt.RqTq(pd), &u_hat[i], &u[i]);
+        @memcpy(&u[i], zetas);
+        @memcpy(&u_hat[i], &u[i]);
     }
     var w_hat = ntt.RqTq(pd){};
     for (0..pd.k) |i| {
@@ -371,7 +376,7 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ciphertext: Cip
     }
     var w = ntt.RqTq(pd){};
     ntt.nttInverse(pd, &w_hat, zetas);
-    std.mem.copy(u16, &w, &w_hat);
+    @memcpy(&w, &w_hat);
     for (0..pd.n) |i| {
         w[i] = @as(u16, @intCast(@mod(@as(i32, v[i]) - @as(i32, w[i]) + pd.q, pd.q)));
     }

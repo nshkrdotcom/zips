@@ -126,7 +126,7 @@ fn constantTimeMod(x: u32, comptime modulus: u32) u32 {
 }
 
 // Updated decoding functions to use mlkem instead of kem
-pub fn decodePublicKey(_: params.ParamDetails, pk_bytes: []const u8) !mlkem.PublicKey {
+pub fn decodePublicKey(_: params.ParamDetails, pk_bytes: []const u8, allocator: *std.mem.Allocator) !mlkem.PublicKey {
     const t = pk_bytes[0..pk_bytes.len - 32];
     const rho_src = pk_bytes[pk_bytes.len - 32..]; // Source rho
 	var arena = try std.heap.ArenaAllocator.init(allocator);
@@ -140,7 +140,7 @@ pub fn decodePublicKey(_: params.ParamDetails, pk_bytes: []const u8) !mlkem.Publ
     return .{ .t = publicKey_t, .rho = rho, .arena = &arena };
 }
 
-pub fn decodePrivateKey(comptime pd: params.ParamDetails, sk_bytes: []const u8) !mlkem.PrivateKey {
+pub fn decodePrivateKey(comptime pd: params.ParamDetails, sk_bytes: []const u8, allocator: *std.mem.Allocator) !mlkem.PrivateKey {
     var arena = try std.heap.ArenaAllocator.init(allocator);
     errdefer arena.deinit();
     var sk = try arena.allocator().create(mlkem.PrivateKey);
@@ -153,7 +153,7 @@ pub fn decodePrivateKey(comptime pd: params.ParamDetails, sk_bytes: []const u8) 
     return sk;
 }
 
-pub fn decodeCiphertext(comptime pd: params.ParamDetails, ct_bytes: []const u8) !mlkem.Ciphertext {
+pub fn decodeCiphertext(comptime pd: params.ParamDetails, ct_bytes: []const u8, allocator: *std.mem.Allocator) !mlkem.Ciphertext {
     if (ct_bytes.len != pd.ciphertextBytes) { // validate ciphertext length before creating the arena or allocating
         return error.InvalidCiphertext;
     }

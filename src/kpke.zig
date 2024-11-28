@@ -23,12 +23,6 @@ pub const PrivateKey = struct {
     arena: *std.heap.ArenaAllocator,
 };
 
-fn allocOrError(allocator: *mem.Allocator, comptime T: type, size: usize) Error![]T {
-    return allocator.alloc(T, size) catch |err| switch (err) {
-        error.OutOfMemory => Error.OutOfMemory,
-    };
-}
-
 inline fn secureZero(comptime T: type, slice: []volatile T) void {
     for (slice) |*elem| {
         elem.* = 0;
@@ -42,6 +36,12 @@ fn compress(comptime pd: params.ParamDetails, value: u16, bits: u8) u16 {
     _ = pd;
     _ = bits;
     return value;
+}
+
+fn allocOrError(allocator: *std.mem.Allocator, comptime T: type, size: usize) Error![]T {
+    return allocator.alloc(T, size) catch |err| switch (err) {
+        error.OutOfMemory => Error.OutOfMemory,
+    };
 }
 
 // K-PKE Key Generation
@@ -396,8 +396,7 @@ test "k-pke encrypt and decrypt are inverses" {
     const ciphertext = try encrypt(pd, pk, message, allocator);
     defer allocator.free(ciphertext);
     
-    const decrypted = try decrypt(pd, sk, ciphertext, allocator);
-    defer allocator.free(decrypted);
+    const decrypted = try decrypt(pd, sk, ciphertext, allocator); // Fix allocator type
     
     try std.testing.expectEqualSlices(u8, message, decrypted);
 }

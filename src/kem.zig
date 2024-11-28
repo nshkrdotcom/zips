@@ -32,7 +32,7 @@ pub const SharedSecret = [32]u8;
 
 // Key Generation
 pub fn keygen(comptime params: Params, allocator: *std.mem.Allocator) Error!KeyPair {
-    return try mlkem.keygen(params, allocator);  // params.get() 
+    return try mlkem.keygen(params.get(), allocator);  // Fix parameter type
 }
 
 // Encapsulation
@@ -189,7 +189,7 @@ pub fn generateRandomBytes(buffer: []u8) !void {
 
 // Benchmark example
 test "benchmark mlkem keygen" {
-	const pd = Params;
+	const pd = Params.kem768; // Fix parameter type
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();

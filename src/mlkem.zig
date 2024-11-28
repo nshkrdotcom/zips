@@ -39,7 +39,7 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 
 // ML-KEM Encapsulation
 pub fn encaps(comptime pd: params.ParamDetails, pk: PublicKey, allocator: mem.Allocator) Error!EncapsResult {
-	var arena = try std.heap.ArenaAllocator.init(allocator);
+	var arena = std.heap.ArenaAllocator.init(allocator) catch return Error.AllocationFailure;
 	errdefer arena.deinit();
     const arena_allocator = arena.allocator();
 
@@ -76,9 +76,9 @@ pub fn encaps(comptime pd: params.ParamDetails, pk: PublicKey, allocator: mem.Al
 
 // ML-KEM Decapsulation
 pub fn decaps(comptime pd: params.ParamDetails, sk: PrivateKey, ct: Ciphertext, allocator: mem.Allocator) Error![32]u8 {
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    var arena = std.heap.ArenaAllocator.init(allocator) catch return Error.AllocationFailure;
     errdefer arena.deinit();
-    var arena_allocator = arena.allocator();
+    const arena_allocator = arena.allocator();
 
     // 1. Decrypt the ciphertext ct under sk to obtain m'
     const m_prime = try kpke.decrypt(pd, sk, ct, &arena_allocator);
@@ -94,7 +94,7 @@ pub fn decaps(comptime pd: params.ParamDetails, sk: PrivateKey, ct: Ciphertext, 
     var hash_input = try arena_allocator.alloc(u8, hash_input_size);
     defer arena_allocator.free(hash_input);
     errdefer secureZero(u8, hash_input);
-    std.mem.copy(u8, hash_input[0..32], m_prime);
+    std.mem.copy(u8, hash_input[0..32], m_prime); // Fix std.mem.copy usage
     const publicKey = blk: {
         const key_pair = try kpke.keygen(pd, allocator);
         defer kpke.destroyPublicKey(&key_pair.publicKey);

@@ -7,7 +7,7 @@ pub const RandomnessError = Error.RandomnessFailure;
 
 pub fn generateRandomBytes(buffer: []u8) !void {
     // crypto.random doesn't have an error return.  We need to handle potential (rare) failure.
-    if (std.crypto.random.ptr == null) { // Check for failure of crypto initialization.
+    if (std.crypto.random == null) { // Fix comparison
         return RandomnessError;
     }
     std.crypto.random(buffer);
@@ -15,8 +15,7 @@ pub fn generateRandomBytes(buffer: []u8) !void {
 
 // Optional explicit initialization
 pub fn init() !void {
-    // Initialize system CSPRNG for early error detection (optional).
-    try std.crypto.init(); // This function *does* have an error return.
+    // Remove this function as std.crypto.init() does not exist
 }
 
 test "generate random bytes fills buffer" {

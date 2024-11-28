@@ -1,5 +1,6 @@
 //ntt.zig
 const std = @import("std");
+const mem = std.mem; // Add this line
 const crypto = std.crypto;
 const params = @import("params.zig");
 const utils = @import("utils.zig");
@@ -8,6 +9,12 @@ const Error = @import("error.zig").Error;
 // Define the type for elements in Rq and Tq (using ParamDetails)
 pub fn RqTq(comptime pd: params.ParamDetails) type {
     return [pd.n]u16;
+}
+
+pub fn allocOrError(allocator: *mem.Allocator, comptime T: type, size: usize) Error![]T {
+    return allocator.alloc(T, size) catch |err| switch (err) {
+        error.OutOfMemory => Error.OutOfMemory,
+    };
 }
 
 // Pre-compute zetas (This should be done only ONCE per parameter set)
@@ -72,8 +79,7 @@ const expectEqual = std.testing.expectEqual;
 
 test "ntt and nttInverse are inverses" {
     const pd = params.Params.kem768.get(); // Example parameters
-    //var f = RqTq(pd){};
-	var f = try allocOrError(allocator, ntt.RqTq(pd), pd.n);
+    var f = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.n); // Fix allocator
     for (f, 0..) |*x, i| {
         x.* = @as(u16, @intCast(@mod(i, pd.q)));
     }
@@ -85,8 +91,7 @@ test "ntt and nttInverse are inverses" {
 
 test "ntt and nttInverse work with zero array" {
     const pd = params.Params.kem768.get(); // Example parameters
-    //var f = RqTq(pd){};
-	var f = try allocOrError(allocator, ntt.RqTq(pd), pd.n);
+    var f = try allocOrError(std.heap.page_allocator, ntt.RqTq(pd), pd.n); // Fix allocator
     var f_hat = RqTq(pd){};
     ntt(pd, &f);
     nttInverse(pd, &f_hat);

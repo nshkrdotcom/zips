@@ -29,160 +29,159 @@ inline fn secureZero(comptime T: type, slice: []volatile T) void {
     }
 }
 
-// Key Generation
-// mlkem.zig (Revised keygen function)
-
-const std = @import("std");
-const crypto = std.crypto;
-const params = @import("params.zig");
-const rng = @import("rng.zig");
-const utils = @import("utils.zig");
-const kpke = @import("kpke.zig");
-const ntt = @import("ntt.zig");
-const Error = @import("error.zig").Error;
-
-// ... (PublicKey, PrivateKey, Ciphertext, KeyPair structs as before)
-
-pub fn keygen(comptime params: params.Params, allocator: mem.Allocator) Error!KeyPair {
+pub fn keygen(comptime pd: params.ParamDetails, allocator: std.mem.Allocator, seed_d: [32]u8, seed_z: [32]u8) !KeyPair {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    // 1. Generate random bytes d and z
-    var d: [32]u8 = undefined;
-    try rng.generateRandomBytes(&d);
-    var z: [32]u8 = undefined;
-    try rng.generateRandomBytes(&z);
+    const kpkeKeyPair = try kpke.keygen(pd, arena.allocator()); // Keygen uses its own arena
 
+    const publicKey = PublicKey{
+        .t = try allocator.dupe(u8, kpkeKeyPair.publicKey.t),
+        .rho = kpkeKeyPair.publicKey.rho,
+    };
+    errdefer allocator.free(publicKey.t); // Free t if allocation fails
 
-    const pd = params.get();
+    const s_copy = try allocator.alloc([]const u16, pd.k);
+    errdefer allocator.free(s_copy);
 
-    // 2. Generate K-PKE key pair (using the arena)
-    const kpkeKeyPair = try kpke.keygen(pd, arena.allocator());
+    for (0..pd.k) |i| {
+        s_copy[i] = try allocator.dupe(u16, kpkeKeyPair.privateKey.s[i]);
+        errdefer allocator.free(s_copy[i]);
+    }
 
-    // 3. Create ML-KEM keys (copying data from the arena using the provided allocator)
-    const publicKey = try PublicKey.init(allocator, kpkeKeyPair.public_key.t, kpkeKeyPair.public_key.rho);
-    errdefer publicKey.deinit(); // Free public key resources if PrivateKey init fails.
+    const privateKey = PrivateKey{
+        .s = s_copy,
+        .t = try allocator.dupe(u8, publicKey.t), // Duplicate t for the private key
+        .h = H(publicKey.t),                  // Compute h = H(t)
+        .z = seed_z,
+    };
+    errdefer {
+        allocator.free(privateKey.t);
+        for (privateKey.s) |slice| {
+			allocator.free(slice);
+		}
+        allocator.free(privateKey.s);
+    }
 
-    const privateKey = try PrivateKey.init(allocator, kpkeKeyPair.private_key.s, publicKey.t, H(publicKey.t), z); // Streamlined Private Key initialization
-    errdefer privateKey.deinit(); // Free private key resources on error
 
     return KeyPair{
-        .public_key = publicKey,
-        .private_key = privateKey,
+        .publicKey = publicKey,
+        .privateKey = privateKey,
     };
 }
 
-// ML-KEM Encapsulation
-// mlkem.zig (Revised encaps function)
-const std = @import("std");
-const crypto = std.crypto;
-const params = @import("params.zig");
-const rng = @import("rng.zig");
-const utils = @import("utils.zig");
-const kpke = @import("kpke.zig");
-const Error = @import("error.zig").Error;
-
-// ... (PublicKey, PrivateKey, Ciphertext, EncapsResult structs as before)
-
-
-pub fn encaps(comptime params: params.Params, pk: PublicKey, allocator: mem.Allocator) Error!EncapsResult {
+pub fn encaps(comptime params: params.Params, pk: PublicKey, allocator: std.mem.Allocator) !EncapsResult {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    // 1. Generate random bytes m
     var m: [32]u8 = undefined;
     try rng.generateRandomBytes(&m);
-    defer std.crypto.secureZero(u8, &m); // Zero-out m when done
+    defer std.crypto.secureZero(u8, &m); // Zero m after use
+
+    const result = try encaps_internal(params, pk, m, arena.allocator());
+    const ciphertext_copy = try allocator.dupe(u8, result.ciphertext.data); // Copy outside arena
+    const ciphertext = Ciphertext { .data = ciphertext_copy}; // ciphertext owns the copied slice
+    return EncapsResult{ .ciphertext = ciphertext, .shared_secret = result.shared_secret };
+}
+
+
+pub fn decaps(comptime params: params.Params, pk: PublicKey, sk: PrivateKey, ct: Ciphertext, allocator: std.mem.Allocator) !SharedSecret {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    return try decaps_internal(params, pk, sk, ct, arena.allocator());
+}
+
+fn encaps_internal(comptime params: params.Params, pk: PublicKey, m: [32]u8, allocator: std.mem.Allocator) !EncapsResult {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
 
     const pd = params.get();
 
-    // 2. Compute K and r (using SHA3-512)
-    var K_r: [64]u8 = undefined;
-
-	// Correctly allocate enough space for the hash input
     const hash_input = try arena.allocator().alloc(u8, m.len + pk.t.len);
     errdefer arena.allocator().free(hash_input);
+
     @memcpy(hash_input[0..m.len], &m);
     @memcpy(hash_input[m.len..], pk.t);
 
-
+    var K_r: [64]u8 = undefined;
     crypto.hash.sha3.Sha3_512.hash(hash_input, &K_r, .{});
     const K = K_r[0..32].*;
-    const r = K_r[32..].*;
+    var r = K_r[32..].*;
 
-    // 3. Encrypt m using K-PKE (using the arena's allocator)
-    const c = try kpke.encrypt(pd, pk, &m, arena.allocator());
+    const ciphertext = try kpke.encrypt(pd, pk, &m, arena.allocator()); // Use arena's allocator
 
-    // 4. Create the Ciphertext object, copying data out of the arena
-    const ciphertext = try Ciphertext.init(allocator, c.data);  // copies the data into an arena owned by ciphertext itself
-    errdefer ciphertext.deinit();
+    std.crypto.secureZero(u8, &r); // Zero out r
+    std.crypto.secureZero(u8, &m); // Zero out m
 
+    // Ciphertext is already a copy returned by kpke.encrypt, so we don't need to make another copy
     return EncapsResult{
         .ciphertext = ciphertext,
         .shared_secret = K,
     };
 }
 
-// ML-KEM Decapsulation
-pub fn decaps(comptime params: params.Params, pk: PublicKey, sk: PrivateKey, ct: Ciphertext, allocator: mem.Allocator) Error!SharedSecret {
+fn decaps_internal(comptime params: params.Params, pk: PublicKey, sk: PrivateKey, ct: Ciphertext, allocator: std.mem.Allocator) !SharedSecret {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
     const pd = params.get();
 
-    // 1. Decrypt the ciphertext ct under sk to obtain m'
-    const m_prime = try kpke.decrypt(pd, sk, ct, arena.allocator()); // Use arena's allocator
-    defer std.crypto.secureZero(u8, m_prime); // Securely zero m_prime when no longer needed
-    errdefer arena.allocator().free(m_prime);
+    const m_prime = try kpke.decrypt(pd, sk, ct, arena.allocator()); // Use arena allocator
+    defer std.crypto.secureZero(u8, m_prime);  // Securely zero m_prime *after* decryption but *before* return or further processing
 
-    // 2. Compute K' from m'  (using H(pk) from the private key)
-    var K_prime_r_prime: [64]u8 = undefined;
-    
-    const hash_input = try arena.allocator().alloc(u8, m_prime.len + sk.h.len);  // Use sk.h directly
+    const hash_input = try arena.allocator().alloc(u8, m_prime.len + sk.h.len);
     errdefer arena.allocator().free(hash_input);
-
     @memcpy(hash_input[0..m_prime.len], m_prime);
-    @memcpy(hash_input[m_prime.len..], sk.h); // Use sk.h (hash of pk)
+    @memcpy(hash_input[m_prime.len..], &sk.h);
 
+    var K_prime_r_prime: [64]u8 = undefined;
     crypto.hash.sha3.Sha3_512.hash(hash_input, &K_prime_r_prime, .{});
     var K_prime = K_prime_r_prime[0..32].*;
     const r_prime = K_prime_r_prime[32..].*;
 
-    // 3. Re-encrypt m' under pk to obtain c' (using the arena allocator)
-    var c_prime_struct = try kpke.encrypt(pd, pk, m_prime, arena.allocator());
-	const c_prime = c_prime_struct.data;
+    const c_prime_struct = try kpke.encrypt(pd, pk, m_prime, arena.allocator());
+    const c_prime = c_prime_struct.data; //Access data directly since c_prime is allocated inside the arena
 
-    defer c_prime_struct.deinit();
 
-    // 4. Compare c and c' in constant time
-    const sameCiphertexts = std.mem.eql(u8, ct.data, c_prime); // Constant-time comparison
+    const sameCiphertexts = std.mem.eql(u8, ct.data, c_prime);
 
-    // 5. Return K' if c == c', otherwise derive K from r (using J)
     var K: SharedSecret = undefined;
     if (sameCiphertexts) {
         K = K_prime;
-    } else {        
-        K = J(sk.z, ct.data); // Use sk.z (random value from private key) and ct.data, Use arena.allocator()
+        std.crypto.secureZero(u8, &r_prime); // Zero out r_prime if not used for K
+    } else {
+        K = J(sk.z, ct.data, arena.allocator()); // Use arena's allocator
+        std.crypto.secureZero(u8, &K_prime); // Zero out K_prime if not used for K
+        std.crypto.secureZero(u8, &r_prime);      // Zero out r_prime
     }
+	std.crypto.secureZero(u8, m_prime);
+    arena.allocator().free(m_prime);
 
-    return K ;
-
+    return K;
 }
 
-// Helper function for J (make sure this handles allocation correctly, using the provided or arena allocator)
-// mlkem.zig (J helper function implementation)
+// J helper function (using arena allocator)
 fn J(z: [32]u8, c: []const u8, allocator: std.mem.Allocator) SharedSecret {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
     const hash_input = try arena.allocator().alloc(u8, z.len + c.len);
-    errdefer arena.allocator().free(hash_input);
+    errdefer arena.allocator().free(hash_input); // Free on error
+
     @memcpy(hash_input[0..z.len], &z);
     @memcpy(hash_input[z.len..], c);
 
-    var K: SharedSecret = undefined; // Or [32]u8 if SharedSecret is a type alias for that
-    crypto.hash.shake256.Shake256.hash(hash_input, &K, .{}); //  SHAKE256 for variable output
+    var K: SharedSecret = undefined;
+    crypto.hash.shake256.Shake256.hash(hash_input, &K, .{});  // SHAKE256 for variable output
+
     return K;
+}
+
+// H helper function (no allocation, no allocator needed)
+fn H(data: []const u8) [32]u8 {
+    var h: [32]u8 = undefined;
+    crypto.hash.sha3.Sha3_256.hash(data, &h, .{}); // SHA3-256
+    return h;
 }
 
 pub fn destroyCiphertext(ct: []u8) void {

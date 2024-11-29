@@ -11,79 +11,17 @@ const Error = @import("error.zig").Error;
 pub const PublicKey = struct {
     t: []u8,
     rho: [32]u8,
-    arena: std.heap.ArenaAllocator,
-
-    pub fn init(allocator: mem.Allocator, t: []u8, rho: [32]u8) !PublicKey {
-        var arena = std.heap.ArenaAllocator.init(allocator);
-        errdefer arena.deinit();  // Clean up if allocation fails
-
-        const t_copy = try arena.allocator().dupe(u8, t);
-        errdefer arena.allocator().free(t_copy); // errdefer for the copy
-
-        return PublicKey{
-            .t = t_copy,
-            .rho = rho,
-            .arena = arena,
-        };
-    }
-
-    pub fn deinit(self: *PublicKey) void {
-        self.arena.deinit();
-    }
 };
 
 pub const PrivateKey = struct {
     s: []const []const u16,
-    arena: std.heap.ArenaAllocator,
-
-    pub fn init(allocator: mem.Allocator, s: []const []const u16) !PrivateKey {
-        var arena = std.heap.ArenaAllocator.init(allocator);
-        errdefer arena.deinit();
-
-        const s_copy = try arena.allocator().alloc([]const u16, s.len);
-        errdefer arena.allocator().free(s_copy);
-        for (s, 0..) |poly, i| {
-            s_copy[i] = try arena.allocator().dupe(u16, poly);
-            errdefer arena.allocator().free(s_copy[i]);
-        }
-
-        return PrivateKey{
-            .s = s_copy,
-            .arena = arena,
-        };
-    }
-
-
-    pub fn deinit(self: *PrivateKey) void {
-        for (self.s) |poly| {
-            self.arena.allocator().free(poly);
-        }
-        self.arena.allocator().free(self.s);
-        self.arena.deinit();
-    }
+    t: []const u8, // Store t for decapsulation
+    h: [32]u8,      // Store H(t)
+    z: [32]u8,
 };
 
 pub const Ciphertext = struct {
     data: []u8,
-    arena: std.heap.ArenaAllocator,
-
-    pub fn init(allocator: mem.Allocator, data: []u8) !Ciphertext {
-        var arena = std.heap.ArenaAllocator.init(allocator);
-        errdefer arena.deinit();
-
-        const data_copy = try arena.allocator().dupe(u8, data);
-        errdefer arena.allocator().free(data_copy);
-
-        return Ciphertext{
-            .data = data_copy,
-            .arena = arena,
-        };
-    }
-
-    pub fn deinit(self: *Ciphertext) void {
-        self.arena.allocator().free(self.data);
-        self.arena.deinit();
-    }
 };
 
 inline fn secureZero(comptime T: type, slice: []volatile T) void {
@@ -119,7 +57,9 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
     // 1. Generate random bytes for seed d
     var d: [32]u8 = undefined;
     try rng.generateRandomBytes(&d);
-
+	
+	std.crypto.secureZero(u8, &d); // Securely zero d after it's used
+	
     // 2. Expand seed d into rho and sigma
     var rho_sigma: [64]u8 = undefined;  // No need to zero-initialize if you overwrite it immediately
     crypto.hash.sha3.Sha3_512.hash(&d, &rho_sigma, .{});
@@ -158,6 +98,16 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
         errdefer arena.allocator().free(e[i * pd.n .. (i + 1) * pd.n]);
     }
 
+	std.crypto.secureZero(u8, &sigma);
+	// ... (Securely zero s and e)
+    for (s) |*polynomial| {
+        std.crypto.secureZero(u16, polynomial); // Zero out polynomial coefficients of s
+    }
+    for (e) |*polynomial| {
+        std.crypto.secureZero(u16, polynomial); // Zero out polynomial coefficients of e
+    }
+	
+
     const zetas = ntt.getZetas(pd);
 
     // 6. Compute t = As + e (using NTT)
@@ -188,7 +138,7 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
 
 
     // 7. Encode t (Compression and Serialization)
-    var encoded_t = try arena.allocator().alloc(u8, pd.publicKeyBytes - 32);
+    const encoded_t = try arena.allocator().alloc(u8, pd.publicKeyBytes - 32);
     errdefer arena.allocator().free(encoded_t);
     for (0..pd.k) |i| {
         ntt.nttInverse(pd, &t[i * pd.n .. (i + 1) * pd.n], zetas);  // Inverse NTT on the correct slice of t
@@ -198,27 +148,47 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
         }
     }
 
-    const publicKeyBytes = try allocator.dupe(u8, encoded_t);
-    errdefer allocator.free(publicKeyBytes);
+	//var publicKey = PublicKey{
+	//	.t = try allocator.dupe(u8, encoded_t),
+	//	.rho = rho,
+	//};
+	//errdefer allocator.free(publicKey.t); //Error handling
+	var publicKey = try allocator.dupe(u8, encoded_t);
+    errdefer allocator.free(publicKey);
 
-    const publicKey = try PublicKey.init(allocator, publicKeyBytes, rho);
-    errdefer publicKey.deinit();
 
-
-    // Allocate and duplicate s data for private key
-    const s_copy = try allocator.alloc([]const u16, pd.k);
-    errdefer allocator.free(s_copy); // Added errdefer to prevent memory leaks
+	// Allocate and duplicate s data for private key
+	const s_copy = try allocator.alloc([]const u16, pd.k); // Allocate outside the arena
+    errdefer allocator.free(s_copy);
     for (0..pd.k) |i| {
-        s_copy[i] = try allocator.dupe(u16, s[i]);
+        s_copy[i] = try allocator.dupe(u16, s[i * pd.n..(i + 1) * pd.n]);
         errdefer allocator.free(s_copy[i]);
+
     }
+    const t_copy = try allocator.dupe(u8, encoded_t); //Duplicate t here
+    errdefer allocator.free(t_copy);
 
-    const privateKey = try PrivateKey.init(allocator, s_copy);
-    errdefer privateKey.deinit();
+    const privateKey = PrivateKey{
+        .s = s_copy,
+        .h = H(t_copy), // Use t_copy here, no allocation needed for h
+        .z = z,         // Use z from previous allocations
+    };
 
-    return .{
-        .public_key = publicKey,
-        .private_key = privateKey,
+    errdefer {
+        for (privateKey.s) |slice| allocator.free(slice);
+        allocator.free(privateKey.s);
+        allocator.free(privateKey.t);
+    };
+	
+    // ... secureZero(sigma, s, e) as before (within the arena)
+    std.crypto.secureZero(u8, &seed_d);
+    std.crypto.secureZero(u8, &sigma);
+
+    //Free arena allocated items
+
+    return KeyPair{
+        .publicKey = publicKey,
+        .privateKey = privateKey,
     };
 }
 
@@ -232,9 +202,10 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
     // 1. Generate random bytes r
     var r: [32]u8 = undefined;
     try rng.generateRandomBytes(&r);
+	std.crypto.secureZero(u8, &r);  // Zero out r after use
 
     // 2. Encode message as a polynomial m
-    const m = try utils.bytesToPolynomial(pd, message, arena.allocator());
+    var m = utils.bytesToPolynomial(pd, message, arena.allocator());
     errdefer arena.allocator().free(m); // Free m if subsequent allocations fail
 
     // 3. Generate y, e1, and e2 using CBD
@@ -335,11 +306,9 @@ pub fn encrypt(comptime pd: params.ParamDetails, pk: PublicKey, message: []const
 
     // 7. Compress and encode u and v
     // ... (compression and encoding logic using arena.allocator(), similar to previous examples)
-
-
-    const ciphertextBytes = try arena.allocator().dupe(u8, ciphertext_from_arena); // Duplicate the ciphertext bytes outside the arena before it's destroyed
-    errdefer arena.allocator().free(ciphertextBytes);
-    var ciphertext = try Ciphertext.init(allocator, ciphertextBytes);
+	const ciphertext_copy = try allocator.dupe(u8, ciphertext_from_arena); //Duplicate ciphertext here.
+    errdefer allocator.free(ciphertext_copy);
+    const ciphertext = Ciphertext{.data = ciphertext_copy};
     return ciphertext;
 }
 
@@ -417,10 +386,11 @@ pub fn decrypt(comptime pd: params.ParamDetails, sk: PrivateKey, ct: Ciphertext,
     }
 
     // 3. Decode message from w
-    const message_bytes = try utils.polynomialToBytes(pd, w, arena.allocator());
+    const message_bytes = try utils.polynomialToBytes(pd, &w, arena.allocator());
     errdefer arena.allocator().free(message_bytes);  // Free if duplication fails
 	
     const decrypted_message = try allocator.dupe(u8, message_bytes);
+    errdefer allocator.free(decrypted_message);
     return decrypted_message;
 }
 

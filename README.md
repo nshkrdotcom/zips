@@ -240,6 +240,33 @@ https://github.com/usnistgov/ACVP-Server/tree/master/gen-val/json-files/ML-KEM-k
 ( per: https://groups.google.com/a/list.nist.gov/g/pqc-forum/c/vybKwrXx53k )
 
 
+**Current State of KATs (kpke_test.zig and mlkem_test.zig):**
+
+* **`kpke_test.zig`**: This file *does* contain basic KAT structures and test functions for K-PKE across all three parameter sets. This is a good start. However, the KAT vectors themselves are likely either missing, incomplete, or need to be updated to match the most recent NIST vectors.  Furthermore, the test code will need to be adjusted to handle the simplified key and ciphertext representations (`[]u8` and the new `PrivateKey` struct) and the consistent allocator usage we've implemented.
+
+* **`mlkem_test.zig`**:  This file *should* contain KAT structures and test functions specifically for ML-KEM, similar to `kpke_test.zig`. Again, the same considerations apply regarding the completeness and correctness of the KAT vectors and the need to update the test code for the revised data structures and allocator usage.  If you haven't already implemented these tests, you'll need to add them for all parameter sets. It would be reasonable to have a test function for ML-KEM for all parameter sets similar to how K-PKE tests were constructed.
+
+
+**Key Actions for KATs:**
+
+1. **Obtain Latest NIST KAT Vectors:**  Download the official, most recent NIST KAT vectors for ML-KEM from the NIST CAVP or PQC standardization project websites.  These are the definitive source of truth for validating your implementation.
+
+2. **Update KAT Vectors in Code:** Replace any existing placeholder or outdated vectors in `kpke_test.zig` and `mlkem_test.zig` with the complete and correct NIST vectors.  Be meticulous in this step to avoid errors.  You can either embed the KAT vectors directly in your test code or load them from external files.  The choice depends on your preference and the size of the vectors.  The format is described in FIPS 203.
+
+3. **Verify Decoding Functions:**  Double-check that the `decodePublicKey`, `decodePrivateKey`, and `decodeCiphertext` functions in `utils.zig` correctly decode the raw byte arrays from the KAT vectors into your revised data structures (`[]u8`, `PrivateKey` struct, `[]u8`).  This is essential for the tests to work correctly. Ensure they use the provided allocator.
+
+4. **Adapt Test Functions:** Update the test functions in `kpke_test.zig` and `mlkem_test.zig` to use the decoded keys and ciphertexts, and pass allocators correctly.  Ensure you're using `std.mem.eql` to compare the *contents* of the byte arrays, not the pointers.  Make sure the tests cover key generation (`ML-KEM.KeyGen_internal` and `K-PKE.KeyGen`), encapsulation (`ML-KEM.Encaps_internal` and `K-PKE.Encrypt`), and decapsulation (`ML-KEM.Decaps_internal` and `K-PKE.Decrypt`).
+
+5. **Add Invalid Input Tests (If Missing):** Create test vectors and test functions for invalid inputs to `ML-KEM.Encaps` and `ML-KEM.Decaps` to verify that your input validation is correct. This is important for security.
+
+6. **Compile and Run Tests:** After updating the KAT vectors and test functions, compile and run your tests.  *All tests must pass.*  If any tests fail, carefully debug your implementation to identify and correct the errors.
+
+7. **Consider Edge Case and Fuzz Tests (If not done before):** After the KATs pass, consider adding tests for edge cases (short messages, all-zero seeds) and use fuzz testing if possible.
+
+
+
+
+
 2. **Constant-Time Ciphertext Comparison:** The `decaps` function in `mlkem.zig` compares ciphertexts (`c` and `c'`).  This *must* be done in constant time to prevent timing attacks.  The code acknowledges this but doesn't provide a constant-time implementation.  This is a high-priority security vulnerability that must be addressed.  Consider using `std.mem.compare` with masking or a dedicated constant-time comparison function.
 
 FIPS 203 highlights the importance of constant-time operations (Section 3.3, Section 7.3).  The ciphertext comparison in `ML-KEM.Decaps_internal` (Algorithm 18, line 9) is a critical security vulnerability if not implemented in constant time. 

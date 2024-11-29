@@ -178,7 +178,7 @@ pub fn keygen(comptime pd: params.ParamDetails, allocator: mem.Allocator) Error!
         for (privateKey.s) |slice| allocator.free(slice);
         allocator.free(privateKey.s);
         allocator.free(privateKey.t);
-    };
+    }
 	
     // ... secureZero(sigma, s, e) as before (within the arena)
     std.crypto.secureZero(u8, &seed_d);

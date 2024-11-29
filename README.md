@@ -6,12 +6,11 @@ Zips provides a pure Zig implementation of the Module-Lattice-Based Key-Encapsul
 
 ## Features
 
-* Pure Zig (Mostly):  Leverages Zig's standard library (`std.crypto`) for core cryptographic functions (hashing, AEAD, RNG), minimizing custom implementations.
+* Pure Zig (Mostly):  Leverages Zig's standard library (`std.crypto`) for core cryptographic functions (hashing, RNG), minimizing custom implementations.
 * NIST FIPS 203 Compliant: Implements all three parameter sets (ML-KEM-512, ML-KEM-768, ML-KEM-1024).
 * Secure RNG: Uses Zig's built-in CSPRNG (`std.crypto.random`).
-* Authenticated Encryption: Uses AES-GCM (or other AEAD ciphers from `std.crypto.aead`) for secure encryption/decryption.
 * Memory Safety: Employs Zig's memory safety features and demonstrates best practices for memory management (arena allocation, explicit deallocation).
-* Clear API: Provides a simple and consistent interface for KEM operations and AEAD.
+* Clear API: Provides a simple and consistent interface for KEM operations.
 * Test Vectors: Includes known-answer tests (KATs) for validation. Currently using [KAT](https://github.com/post-quantum-cryptography/KAT).
 
 ## Example Usage
@@ -52,14 +51,15 @@ pub fn main() !void {
     var nonce: [12]u8 = undefined; // 96-bit nonce for AES-256-GCM
     try kem.generateRandomBytes(&nonce);
 
-    const additional_data = ""; // Optional additional authenticated data
-    const ciphertext = try kem.aeadEncrypt(shared_secret, nonce, plaintext, additional_data, allocator);
+	// TODO:
+    const additional_data = ""; 
+    //const ciphertext = try kem. encrypt(shared_secret, nonce, plaintext, additional_data, allocator);
     defer allocator.free(ciphertext);
 
     std.debug.print("Ciphertext (hex): {s}\n", .{std.fmt.fmtSliceHexLower(ciphertext)});
 
-    // 6. Decrypt the message
-    const decrypted = try kem.aeadDecrypt(recovered_shared_secret, nonce, ciphertext, additional_data, allocator);
+    // 6. Decrypt the message TODO
+    //const decrypted = try kem decrypt(recovered_shared_secret, nonce, ciphertext, additional_data, allocator);
     defer allocator.free(decrypted);
     std.debug.print("Decrypted: {s}\n", .{decrypted});
 	
@@ -82,7 +82,6 @@ graph LR
     end
 
     subgraph SC["std.crypto"]
-        aead
         hash
         random
     end
@@ -120,7 +119,6 @@ graph LR
     cbd --> rng
     cbd --> params
     mlkem --> rng
-    kem --> aead
     kem --> random
     kem --> error
     mlkem --> error

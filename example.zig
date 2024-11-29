@@ -30,19 +30,19 @@ pub fn main() !void {
         return;
     }
 
-    // 5. Encrypt a message using the shared secret (AES-GCM)
+    // 5. Encrypt a message using the shared secret TODO
     const plaintext = "Lorem ipsum dolor sit amet.";
     var nonce: [12]u8 = undefined; // 96-bit nonce for AES-256-GCM
     try kem.generateRandomBytes(&nonce);
 
     const additional_data = ""; // Optional additional authenticated data
-    const ciphertext = try kem.aeadEncrypt(shared_secret, nonce, plaintext, additional_data, allocator);
+    const ciphertext = try kem. encrypt(shared_secret, nonce, plaintext, additional_data, allocator);
     defer allocator.free(ciphertext);
 
     std.debug.print("Ciphertext (hex): {s}\n", .{std.fmt.fmtSliceHexLower(ciphertext)});
 
-    // 6. Decrypt the message
-    const decrypted = try kem.aeadDecrypt(recovered_shared_secret, nonce, ciphertext, additional_data, allocator);
+    // 6. Decrypt the message TODO
+    const decrypted = try kem. decrypt(recovered_shared_secret, nonce, ciphertext, additional_data, allocator);
     defer allocator.free(decrypted);
     std.debug.print("Decrypted: {s}\n", .{decrypted});
 	

@@ -98,55 +98,6 @@ pub fn destroyCiphertext(ct: *Ciphertext) void {
     mlkem.destroyCiphertext(ct);
 }
 
-// Authenticated Encryption (AEAD) - Example using AES-GCM
-pub fn aeadEncrypt(
-    key: SharedSecret,
-    nonce: [12]u8,
-    plaintext: []const u8,
-    additional_data: ?[]const u8,
-    allocator: std.mem.Allocator,
-) Error![]u8 {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
-    var ciphertext = try arena.allocator().alloc(u8, plaintext.len + 16); // Allocate in arena
-    errdefer arena.allocator().free(ciphertext);
-    var tag: [16]u8 = undefined;
-
-    const gcm = std.crypto.aead.aes_gcm.Aes256Gcm;
-    gcm.encrypt(ciphertext[0..plaintext.len], &tag, plaintext, additional_data orelse &[_]u8{}, nonce, key);
-    @memcpy(ciphertext[plaintext.len..], &tag);
-
-    const result = try allocator.dupe(u8, ciphertext); // Copy out of arena
-    return result;
-}
-
-// Authenticated Decryption (AEAD)
-pub fn aeadDecrypt(
-    key: SharedSecret,
-    nonce: [12]u8,
-    ciphertext: []const u8,
-    additional_data: ?[]const u8,
-    allocator: std.mem.Allocator,
-) Error![]u8 {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
-    if (ciphertext.len < 16) return error.InvalidCiphertext;
-    const plaintext_len = ciphertext.len - 16;
-
-    const plaintext = try arena.allocator().alloc(u8, plaintext_len);
-    errdefer arena.allocator().free(plaintext);
-    const tag = ciphertext[plaintext_len..];
-
-    const gcm = std.crypto.aead.aes_gcm.Aes256Gcm;
-    gcm.decrypt(plaintext, ciphertext[0..plaintext_len], tag, additional_data orelse &[_]u8{}, nonce, key) catch |err| {
-        return err; // Or handle the decryption error as needed
-    };
-
-    const result = try allocator.dupe(u8, plaintext); // Copy out of arena
-    return result;
-}
 
 // Random Number Generation (using std.crypto.random)
 pub fn generateRandomBytes(buffer: []u8) !void {
